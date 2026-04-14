@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Aplicación de Hacking Ético - Escáner de puertos y Generador de contraseñas seguras">
+    <title>CyberTool — Hacking Ético</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+</head>
+<body>
+    <!-- Background Effects -->
+    <div class="bg-grid"></div>
+    <div class="scanline"></div>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <span class="header__icon">🛡️</span>
+            <h1 class="header__title">CyberTool</h1>
+            <p class="header__subtitle">Aplicación de Hacking Ético — Ciberseguridad</p>
+            <span class="header__badge">🔒 Uso Responsable y Autorizado</span>
+        </header>
+
+        <!-- Warning -->
+        <div class="warning-banner">
+            <span class="warning-banner__icon">⚠️</span>
+            <span>Esta herramienta es exclusivamente para fines educativos. Escanear equipos sin autorización es ilegal. Úsala solo en equipos propios o con permiso explícito.</span>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="scanner-panel">
+                <span class="tab-icon">📡</span>
+                Escáner de Puertos
+            </button>
+            <button class="tab-btn" data-tab="password-panel">
+                <span class="tab-icon">🔑</span>
+                Generador de Contraseñas
+            </button>
+        </div>
+
+        <!-- ========== SCANNER PANEL ========== -->
+        <div id="scanner-panel" class="panel active">
+            <div class="card">
+                <div class="card__header">
+                    <div class="card__header-icon">📡</div>
+                    <div>
+                        <h2 class="card__title">Escáner de Puertos</h2>
+                        <p class="card__description">Escanea puertos lógicos abiertos de un equipo remoto usando nmap</p>
+                    </div>
+                </div>
+
+                <form id="scan-form">
+                    <!-- Host -->
+                    <div class="form-group">
+                        <label class="form-label" for="scan-host">Dirección IP / Hostname</label>
+                        <input type="text" id="scan-host" class="form-input" placeholder="Ej: 192.168.1.1 o scanme.nmap.org" autocomplete="off">
+                    </div>
+
+                    <!-- Scan Type -->
+                    <div class="form-group">
+                        <label class="form-label">Tipo de Escaneo</label>
+                        <div class="radio-group">
+                            <div class="radio-option">
+                                <input type="radio" name="scan_type" id="scan-single" value="single">
+                                <label for="scan-single">🎯 Puerto Específico</label>
+                            </div>
+                            <div class="radio-option">
+                                <input type="radio" name="scan_type" id="scan-range" value="range">
+                                <label for="scan-range">📊 Rango de Puertos</label>
+                            </div>
+                            <div class="radio-option">
+                                <input type="radio" name="scan_type" id="scan-all" value="all">
+                                <label for="scan-all">🌐 Todos los Puertos</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Single Port Field -->
+                    <div id="single-port-fields" class="dynamic-fields">
+                        <div class="form-group">
+                            <label class="form-label" for="single-port">Número de Puerto</label>
+                            <input type="number" id="single-port" class="form-input" placeholder="Ej: 80" min="1" max="65535">
+                        </div>
+                    </div>
+
+                    <!-- Range Port Fields -->
+                    <div id="range-port-fields" class="dynamic-fields">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="range-start">Puerto Inicio</label>
+                                <input type="number" id="range-start" class="form-input" placeholder="Ej: 1" min="1" max="65535">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="range-end">Puerto Fin</label>
+                                <input type="number" id="range-end" class="form-input" placeholder="Ej: 1024" min="1" max="65535">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit -->
+                    <button type="submit" id="scan-btn" class="btn btn-primary">
+                        <span class="spinner" id="scan-spinner"></span>
+                        <span class="btn-text">INICIAR ESCANEO</span>
+                    </button>
+                </form>
+
+                <!-- Messages -->
+                <div id="scan-message" class="message"></div>
+
+                <!-- Results -->
+                <div id="scan-results" class="results">
+                    <div class="results__header">
+                        <span class="results__title">📋 Resultados del Escaneo</span>
+                        <span class="results__count" id="scan-results-info"></span>
+                    </div>
+                    <table class="port-table">
+                        <thead>
+                            <tr>
+                                <th>Puerto</th>
+                                <th>Estado</th>
+                                <th>Servicio</th>
+                                <th>Protocolo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scan-results-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== PASSWORD PANEL ========== -->
+        <div id="password-panel" class="panel">
+            <div class="card">
+                <div class="card__header">
+                    <div class="card__header-icon">🔑</div>
+                    <div>
+                        <h2 class="card__title">Generador de Contraseñas</h2>
+                        <p class="card__description">Genera contraseñas seguras combinando letras, números y caracteres especiales</p>
+                    </div>
+                </div>
+
+                <form id="password-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="pass-length">Longitud (mín. 8)</label>
+                            <input type="number" id="pass-length" class="form-input" placeholder="Ej: 16" min="8" max="128" value="16">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="pass-count">Cantidad (máx. 100)</label>
+                            <input type="number" id="pass-count" class="form-input" placeholder="Ej: 5" min="1" max="100" value="5">
+                        </div>
+                    </div>
+
+                    <!-- Submit -->
+                    <button type="submit" id="pass-btn" class="btn btn-secondary">
+                        <span class="spinner" id="pass-spinner"></span>
+                        <span class="btn-text">GENERAR CONTRASEÑAS</span>
+                    </button>
+                </form>
+
+                <!-- Messages -->
+                <div id="pass-message" class="message"></div>
+
+                <!-- Results -->
+                <div id="pass-results" class="results">
+                    <div class="results__header">
+                        <span class="results__title">🔐 Contraseñas Generadas</span>
+                        <span class="results__count" id="pass-results-info"></span>
+                    </div>
+                    <div id="pass-results-body" class="password-list">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p><span>CyberTool</span> — Hacking Ético | Ciberseguridad 2026</p>
+            <p>Desarrollado con Python + Flask + Nmap</p>
+        </footer>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

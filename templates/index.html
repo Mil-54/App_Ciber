@@ -47,6 +47,10 @@
                 <span class="tab-icon">🕵️</span>
                 Sniffer de Red
             </button>
+            <button class="tab-btn" data-tab="keylogger-panel">
+                <span class="tab-icon">⌨️</span>
+                Keylogger
+            </button>
         </div>
 
         <!-- ========== SCANNER PANEL ========== -->
@@ -315,10 +319,123 @@
             </div>
         </div>
 
+        <!-- ========== KEYLOGGER PANEL ========== -->
+        <div id="keylogger-panel" class="panel">
+            <div class="card">
+                <div class="card__header">
+                    <div class="card__header-icon">⌨️</div>
+                    <div>
+                        <h2 class="card__title">Keylogger Educativo</h2>
+                        <p class="card__description">Captura pulsaciones de teclas — Demuestra riesgos de espionaje de
+                            teclado</p>
+                    </div>
+                </div>
+
+                <div class="warning-banner" style="margin-bottom: 1.25rem;">
+                    <span class="warning-banner__icon">📚</span>
+                    <span>Para diseñar un <strong>anti-keylogger</strong> es necesario entender cómo funciona un
+                        <strong>keylogger</strong>. Este módulo usa la librería <strong>keyboard</strong> de Python para
+                        capturar lo que se escribe en el teclado y reconstruir el texto.</span>
+                </div>
+
+                <form id="keylogger-form">
+                    <div class="form-group">
+                        <label class="form-label" for="key-duration">Duración de Captura (1-30 segundos)</label>
+                        <input type="number" id="key-duration" class="form-input" placeholder="Ej: 10" min="1" max="30"
+                            value="10">
+                    </div>
+
+                    <p class="keylogger-hint">💡 Al presionar el botón, el keylogger capturará todas las teclas que
+                        presiones durante el tiempo indicado. Escribe algo en cualquier programa para ver cómo se
+                        registra.</p>
+
+                    <!-- Submit -->
+                    <button type="submit" id="key-btn" class="btn btn-keylogger">
+                        <span class="spinner" id="key-spinner"></span>
+                        <span class="btn-text">INICIAR KEYLOGGER</span>
+                    </button>
+                </form>
+
+                <!-- Messages -->
+                <div id="key-message" class="message"></div>
+
+                <!-- Results -->
+                <div id="key-results" class="results">
+                    <!-- Stats -->
+                    <div class="security-stats" style="grid-template-columns: repeat(4, 1fr);">
+                        <div class="stat-card stat-total">
+                            <span class="stat-icon">⌨️</span>
+                            <span class="stat-value" id="key-stat-total">0</span>
+                            <span class="stat-label">Total<br><small>Teclas</small></span>
+                        </div>
+                        <div class="stat-card stat-insecure">
+                            <span class="stat-icon">📝</span>
+                            <span class="stat-value" id="key-stat-letters">0</span>
+                            <span class="stat-label">Letras<br><small>A-Z</small></span>
+                        </div>
+                        <div class="stat-card stat-plaintext">
+                            <span class="stat-icon">🔢</span>
+                            <span class="stat-value" id="key-stat-numbers">0</span>
+                            <span class="stat-label">Números<br><small>0-9</small></span>
+                        </div>
+                        <div class="stat-card stat-secure">
+                            <span class="stat-icon">⚙️</span>
+                            <span class="stat-value" id="key-stat-special">0</span>
+                            <span class="stat-label">Especiales<br><small>Ctrl, Alt...</small></span>
+                        </div>
+                    </div>
+
+                    <!-- Reconstructed Text -->
+                    <div class="results__header">
+                        <span class="results__title">👁️ Texto Reconstruido (lo que el atacante vería)</span>
+                    </div>
+                    <div class="captured-text-box" id="key-captured-text">
+                        <em>El texto reconstruido aparecerá aquí...</em>
+                    </div>
+
+                    <!-- Save -->
+                    <div class="sniff-actions">
+                        <div class="form-row">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <input type="text" id="key-filepath" class="form-input"
+                                    placeholder="Ruta para guardar: /ruta/keylog.json">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <button type="button" id="save-keylog-btn" class="btn btn-save">
+                                    💾 GUARDAR REGISTRO
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Key Log Table -->
+                    <div class="results__header" style="margin-top: 1rem;">
+                        <span class="results__title">📜 Registro de Teclas</span>
+                        <span class="results__count" id="key-results-info"></span>
+                    </div>
+                    <div class="sniff-table-wrapper">
+                        <table class="port-table sniff-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Hora</th>
+                                    <th>Tecla</th>
+                                    <th>Código</th>
+                                    <th>Tipo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="key-results-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Footer -->
         <footer class="footer">
             <p><span>CyberTool</span> — Hacking Ético | Ciberseguridad 2026</p>
-            <p>Desarrollado con Python + Flask + Nmap + Scapy</p>
+            <p>Desarrollado con Python + Flask + Nmap + Scapy + Keyboard</p>
         </footer>
     </div>
 

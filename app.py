@@ -1,12 +1,13 @@
 """
 Aplicación de Hacking Ético - Ciberseguridad
-Servidor Flask principal con endpoints para escaneo de puertos, generación de contraseñas y sniffing de red.
+Servidor Flask principal con endpoints para escaneo de puertos, generación de contraseñas, sniffing y keylogger.
 """
 
 from flask import Flask, render_template, request, jsonify
 from scanner import scan_single_port, scan_port_range, scan_all_ports
 from password_generator import generate_passwords
 from sniffer import sniffer
+from keylogger import keylogger
 
 app = Flask(__name__)
 
@@ -138,10 +139,65 @@ def save_capture():
     return jsonify(result)
 
 
+@app.route('/keylogger-start', methods=['POST'])
+def keylogger_start():
+    """Endpoint para iniciar el keylogger educativo."""
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'success': False, 'error': 'No se recibieron datos.'}), 400
+    
+    try:
+        duration = int(data.get('duration', 10))
+        
+        if duration < 1 or duration > 30:
+            return jsonify({'success': False, 'error': 'La duración debe ser entre 1 y 30 segundos.'}), 400
+        
+        result = keylogger.start(duration=duration)
+        return jsonify(result)
+        
+    except ValueError:
+        return jsonify({'success': False, 'error': 'La duración debe ser un número entero.'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
+
+
+@app.route('/keylogger-stop', methods=['POST'])
+def keylogger_stop():
+    """Endpoint para detener el keylogger."""
+    result = keylogger.stop()
+    return jsonify(result)
+
+
+@app.route('/save-keylog', methods=['POST'])
+def save_keylog():
+    """Endpoint para guardar el registro de teclas en un archivo."""
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'success': False, 'error': 'No se recibieron datos.'}), 400
+    
+    filepath = data.get('filepath', '').strip()
+    keys = data.get('keys', [])
+    captured_text = data.get('captured_text', '')
+    
+    if not filepath:
+        return jsonify({'success': False, 'error': 'Debe indicar la ruta del archivo.'}), 400
+    
+    if not keys:
+        return jsonify({'success': False, 'error': 'No hay teclas para guardar.'}), 400
+    
+    if not filepath.endswith('.json'):
+        filepath += '.json'
+    
+    result = keylogger.save_log(filepath, keys, captured_text)
+    return jsonify(result)
+
+
 if __name__ == '__main__':
     print("\n" + "=" * 60)
     print("  🔒 Aplicación de Hacking Ético - Ciberseguridad")
-    print("  📡 Escáner de Puertos | 🔑 Contraseñas | 🕵️ Sniffer")
+    print("  📡 Scanner | 🔑 Passwords | 🕵️ Sniffer | ⌨️ Keylogger")
     print("=" * 60)
     print("  Servidor corriendo en: http://127.0.0.1:5000")
     print("=" * 60 + "\n")

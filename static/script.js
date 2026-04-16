@@ -450,6 +450,168 @@ document.addEventListener('DOMContentLoaded', () => {
         return map[risk] || 'risk-unknown';
     }
 
+    // ---- Keylogger Form ----
+    const keyForm = document.getElementById('keylogger-form');
+    const keyBtn = document.getElementById('key-btn');
+    const keySpinner = document.getElementById('key-spinner');
+    const keyResults = document.getElementById('key-results');
+    const keyMessage = document.getElementById('key-message');
+    let capturedKeys = [];
+    let capturedText = '';
+
+    keyForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        hideElement(keyMessage);
+        hideElement(keyResults);
+
+        const duration = parseInt(document.getElementById('key-duration').value);
+
+        if (!duration || duration < 1 || duration > 30) {
+            showMessage(keyMessage, 'error', '⚠️ La duración debe ser entre 1 y 30 segundos.');
+            return;
+        }
+
+        // Show loading
+        keyBtn.disabled = true;
+        keySpinner.classList.add('active');
+        keyBtn.querySelector('.btn-text').textContent = `CAPTURANDO... (${duration}s)`;
+        showMessage(keyMessage, 'info', `⌨️ Keylogger activo durante ${duration} segundos. ¡Escribe algo en cualquier ventana!`);
+
+        try {
+            const response = await fetch('/keylogger-start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ duration })
+            });
+
+            const data = await response.json();
+            hideElement(keyMessage);
+
+            if (data.success) {
+                capturedKeys = data.keys;
+                capturedText = data.captured_text;
+                renderKeyloggerResults(data);
+            } else {
+                showMessage(keyMessage, 'error', `❌ ${data.error}`);
+            }
+        } catch (error) {
+            hideElement(keyMessage);
+            showMessage(keyMessage, 'error', `❌ Error: ${error.message}`);
+        } finally {
+            keyBtn.disabled = false;
+            keySpinner.classList.remove('active');
+            keyBtn.querySelector('.btn-text').textContent = 'INICIAR KEYLOGGER';
+        }
+    });
+
+    // ---- Save Keylog Button ----
+    const saveKeylogBtn = document.getElementById('save-keylog-btn');
+    saveKeylogBtn.addEventListener('click', async () => {
+        const filepath = document.getElementById('key-filepath').value.trim();
+
+        if (!filepath) {
+            showMessage(keyMessage, 'error', '⚠️ Ingresa la ruta donde guardar el archivo.');
+            return;
+        }
+
+        if (capturedKeys.length === 0) {
+            showMessage(keyMessage, 'error', '⚠️ No hay teclas capturadas para guardar.');
+            return;
+        }
+
+        saveKeylogBtn.disabled = true;
+        saveKeylogBtn.textContent = '⏳ GUARDANDO...';
+
+        try {
+            const response = await fetch('/save-keylog', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filepath, keys: capturedKeys, captured_text: capturedText })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showMessage(keyMessage, 'success', `✅ Registro guardado en: ${data.filepath} (${data.total_saved} teclas)`);
+            } else {
+                showMessage(keyMessage, 'error', `❌ ${data.error}`);
+            }
+        } catch (error) {
+            showMessage(keyMessage, 'error', `❌ Error: ${error.message}`);
+        } finally {
+            saveKeylogBtn.disabled = false;
+            saveKeylogBtn.textContent = '💾 GUARDAR REGISTRO';
+        }
+    });
+
+    function renderKeyloggerResults(data) {
+        const resultsBody = document.getElementById('key-results-body');
+        const resultsInfo = document.getElementById('key-results-info');
+        const capturedTextBox = document.getElementById('key-captured-text');
+
+        // Update stats
+        if (data.stats) {
+            document.getElementById('key-stat-total').textContent = data.stats.total;
+            document.getElementById('key-stat-letters').textContent = data.stats.letters;
+            document.getElementById('key-stat-numbers').textContent = data.stats.numbers;
+            document.getElementById('key-stat-special').textContent = data.stats.special;
+        }
+
+        // Show captured text
+        if (data.captured_text) {
+            capturedTextBox.textContent = data.captured_text;
+        } else {
+            capturedTextBox.innerHTML = '<em>No se capturó texto legible</em>';
+        }
+
+        resultsInfo.textContent = `Duración: ${data.duration}s | Total: ${data.total_keys} teclas`;
+        resultsBody.innerHTML = '';
+
+        if (data.keys.length === 0) {
+            resultsBody.innerHTML = `
+                <tr>
+                    <td colspan="5" class="no-results">
+                        <span class="no-results__icon">⌨️</span>
+                        No se capturaron teclas
+                    </td>
+                </tr>
+            `;
+        } else {
+            data.keys.forEach((key, index) => {
+                const time = key.timestamp ? key.timestamp.split(' ')[1] : '-';
+                const typeClass = getKeyTypeClass(key.type);
+
+                resultsBody.innerHTML += `
+                    <tr>
+                        <td class="port-number">${index + 1}</td>
+                        <td>${time}</td>
+                        <td><span class="key-name">${escapeHtml(key.key)}</span></td>
+                        <td>${key.key_code}</td>
+                        <td><span class="key-type-badge ${typeClass}">${key.type}</span></td>
+                    </tr>
+                `;
+            });
+        }
+
+        keyResults.classList.add('visible');
+    }
+
+    function getKeyTypeClass(type) {
+        const map = {
+            'letra': 'key-type-letra',
+            'número': 'key-type-numero',
+            'símbolo': 'key-type-simbolo',
+            'modificador': 'key-type-modificador',
+            'espacio': 'key-type-especial',
+            'enter': 'key-type-especial',
+            'tabulación': 'key-type-especial',
+            'borrar': 'key-type-modificador',
+            'navegación': 'key-type-especial',
+            'función': 'key-type-especial'
+        };
+        return map[type] || 'key-type-especial';
+    }
+
     // ---- Utility Functions ----
 
     function showMessage(el, type, text) {

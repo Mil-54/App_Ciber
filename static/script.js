@@ -253,10 +253,162 @@ document.addEventListener('DOMContentLoaded', () => {
         return map[strength] || 'strength-media';
     }
 
+    // ---- Sniffer Form ----
+    const sniffForm = document.getElementById('sniffer-form');
+    const sniffBtn = document.getElementById('sniff-btn');
+    const sniffSpinner = document.getElementById('sniff-spinner');
+    const sniffResults = document.getElementById('sniff-results');
+    const sniffMessage = document.getElementById('sniff-message');
+    let capturedPackets = [];
+
+    sniffForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        hideElement(sniffMessage);
+        hideElement(sniffResults);
+
+        const count = parseInt(document.getElementById('sniff-count').value);
+        const filter = document.getElementById('sniff-filter').value;
+        const iface = document.getElementById('sniff-interface').value.trim();
+
+        if (!count || count < 1) {
+            showMessage(sniffMessage, 'error', '⚠️ Ingresa una cantidad de paquetes válida.');
+            return;
+        }
+
+        if (count > 200) {
+            showMessage(sniffMessage, 'error', '⚠️ La cantidad máxima es 200 paquetes.');
+            return;
+        }
+
+        // Show loading
+        sniffBtn.disabled = true;
+        sniffSpinner.classList.add('active');
+        sniffBtn.querySelector('.btn-text').textContent = 'CAPTURANDO...';
+        showMessage(sniffMessage, 'info', '🕵️ Capturando tráfico de red. Esto puede tomar unos segundos...');
+
+        const payload = { count, filter };
+        if (iface) payload.interface = iface;
+
+        try {
+            const response = await fetch('/sniff', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            hideElement(sniffMessage);
+
+            if (data.success) {
+                capturedPackets = data.packets;
+                renderSniffResults(data);
+            } else {
+                showMessage(sniffMessage, 'error', `❌ ${data.error}`);
+            }
+        } catch (error) {
+            hideElement(sniffMessage);
+            showMessage(sniffMessage, 'error', `❌ Error de conexión: ${error.message}`);
+        } finally {
+            sniffBtn.disabled = false;
+            sniffSpinner.classList.remove('active');
+            sniffBtn.querySelector('.btn-text').textContent = 'INICIAR CAPTURA';
+        }
+    });
+
+    // ---- Save Capture Button ----
+    const saveCaptureBtn = document.getElementById('save-capture-btn');
+    saveCaptureBtn.addEventListener('click', async () => {
+        const filepath = document.getElementById('sniff-filepath').value.trim();
+
+        if (!filepath) {
+            showMessage(sniffMessage, 'error', '⚠️ Ingresa la ruta donde guardar el archivo.');
+            return;
+        }
+
+        if (capturedPackets.length === 0) {
+            showMessage(sniffMessage, 'error', '⚠️ No hay paquetes capturados para guardar.');
+            return;
+        }
+
+        saveCaptureBtn.disabled = true;
+        saveCaptureBtn.textContent = '⏳ GUARDANDO...';
+
+        try {
+            const response = await fetch('/save-capture', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filepath, packets: capturedPackets })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showMessage(sniffMessage, 'success', `✅ Captura guardada en: ${data.filepath} (${data.total_saved} paquetes)`);
+            } else {
+                showMessage(sniffMessage, 'error', `❌ ${data.error}`);
+            }
+        } catch (error) {
+            showMessage(sniffMessage, 'error', `❌ Error: ${error.message}`);
+        } finally {
+            saveCaptureBtn.disabled = false;
+            saveCaptureBtn.textContent = '💾 GUARDAR CAPTURA';
+        }
+    });
+
+    function renderSniffResults(data) {
+        const resultsBody = document.getElementById('sniff-results-body');
+        const resultsInfo = document.getElementById('sniff-results-info');
+
+        resultsInfo.textContent = `Filtro: ${data.filter} | Total capturados: ${data.total_captured}`;
+        resultsBody.innerHTML = '';
+
+        if (data.packets.length === 0) {
+            resultsBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="no-results">
+                        <span class="no-results__icon">📭</span>
+                        No se capturaron paquetes
+                    </td>
+                </tr>
+            `;
+        } else {
+            data.packets.forEach((pkt, index) => {
+                const protocolClass = getProtocolClass(pkt.protocol);
+                const time = pkt.timestamp ? pkt.timestamp.split(' ')[1] : '-';
+                const src = pkt.src_ip ? `${pkt.src_ip}:${pkt.src_port}` : '-';
+                const dst = pkt.dst_ip ? `${pkt.dst_ip}:${pkt.dst_port}` : '-';
+
+                resultsBody.innerHTML += `
+                    <tr>
+                        <td class="port-number">${index + 1}</td>
+                        <td>${time}</td>
+                        <td><span class="protocol-badge ${protocolClass}">${pkt.protocol}</span></td>
+                        <td>${escapeHtml(src)}</td>
+                        <td>${escapeHtml(dst)}</td>
+                        <td>${escapeHtml(pkt.service || '-')}</td>
+                        <td>${pkt.size} B</td>
+                    </tr>
+                `;
+            });
+        }
+
+        sniffResults.classList.add('visible');
+    }
+
+    function getProtocolClass(protocol) {
+        const map = {
+            'TCP': 'protocol-tcp',
+            'UDP': 'protocol-udp',
+            'ICMP': 'protocol-icmp'
+        };
+        return map[protocol] || 'protocol-other';
+    }
+
     // ---- Utility Functions ----
 
     function showMessage(el, type, text) {
-        el.className = `message message--${type === 'error' ? 'error' : type === 'info' ? 'info' : 'warning'} visible`;
+        const typeClass = type === 'error' ? 'error' : type === 'info' ? 'info' : type === 'success' ? 'success' : 'warning';
+        el.className = `message message--${typeClass} visible`;
         el.innerHTML = text;
     }
 

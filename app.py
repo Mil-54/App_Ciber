@@ -1,11 +1,12 @@
 """
 Aplicación de Hacking Ético - Ciberseguridad
-Servidor Flask principal con endpoints para escaneo de puertos y generación de contraseñas.
+Servidor Flask principal con endpoints para escaneo de puertos, generación de contraseñas y sniffing de red.
 """
 
 from flask import Flask, render_template, request, jsonify
 from scanner import scan_single_port, scan_port_range, scan_all_ports
 from password_generator import generate_passwords
+from sniffer import sniffer
 
 app = Flask(__name__)
 
@@ -83,10 +84,64 @@ def gen_passwords():
     return jsonify(result)
 
 
+@app.route('/sniff', methods=['POST'])
+def sniff_network():
+    """Endpoint para captura de tráfico de red (sniffing)."""
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'success': False, 'error': 'No se recibieron datos.'}), 400
+    
+    try:
+        count = int(data.get('count', 50))
+        filter_protocol = data.get('filter', 'all')
+        interface = data.get('interface', None)
+        
+        if filter_protocol not in ['all', 'tcp', 'udp', 'icmp']:
+            return jsonify({'success': False, 'error': 'Filtro no válido. Use: all, tcp, udp, icmp'}), 400
+        
+        result = sniffer.start_capture(
+            count=count,
+            filter_protocol=filter_protocol,
+            interface=interface if interface else None
+        )
+        return jsonify(result)
+        
+    except ValueError:
+        return jsonify({'success': False, 'error': 'La cantidad debe ser un número entero.'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error inesperado: {str(e)}'}), 500
+
+
+@app.route('/save-capture', methods=['POST'])
+def save_capture():
+    """Endpoint para guardar la captura en un archivo."""
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'success': False, 'error': 'No se recibieron datos.'}), 400
+    
+    filepath = data.get('filepath', '').strip()
+    packets = data.get('packets', [])
+    
+    if not filepath:
+        return jsonify({'success': False, 'error': 'Debe indicar la ruta del archivo.'}), 400
+    
+    if not packets:
+        return jsonify({'success': False, 'error': 'No hay paquetes para guardar.'}), 400
+    
+    # Agregar extensión .json si no la tiene
+    if not filepath.endswith('.json'):
+        filepath += '.json'
+    
+    result = sniffer.save_capture(filepath, packets)
+    return jsonify(result)
+
+
 if __name__ == '__main__':
     print("\n" + "=" * 60)
     print("  🔒 Aplicación de Hacking Ético - Ciberseguridad")
-    print("  📡 Escáner de Puertos | 🔑 Generador de Contraseñas")
+    print("  📡 Escáner de Puertos | 🔑 Contraseñas | 🕵️ Sniffer")
     print("=" * 60)
     print("  Servidor corriendo en: http://127.0.0.1:5000")
     print("=" * 60 + "\n")

@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Aplicación de Hacking Ético - Escáner de puertos y Generador de contraseñas seguras">
+    <meta name="description"
+        content="Aplicación de Hacking Ético - Escáner de puertos y Generador de contraseñas seguras">
     <title>CyberTool — Hacking Ético</title>
     <link rel="stylesheet" href="/static/style.css">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
 </head>
+
 <body>
     <!-- Background Effects -->
     <div class="bg-grid"></div>
@@ -25,7 +29,8 @@
         <!-- Warning -->
         <div class="warning-banner">
             <span class="warning-banner__icon">⚠️</span>
-            <span>Esta herramienta es exclusivamente para fines educativos. Escanear equipos sin autorización es ilegal. Úsala solo en equipos propios o con permiso explícito.</span>
+            <span>Esta herramienta es exclusivamente para fines educativos. Escanear equipos sin autorización es ilegal.
+                Úsala solo en equipos propios o con permiso explícito.</span>
         </div>
 
         <!-- Tab Navigation -->
@@ -38,6 +43,10 @@
                 <span class="tab-icon">🔑</span>
                 Generador de Contraseñas
             </button>
+            <button class="tab-btn" data-tab="sniffer-panel">
+                <span class="tab-icon">🕵️</span>
+                Sniffer de Red
+            </button>
         </div>
 
         <!-- ========== SCANNER PANEL ========== -->
@@ -47,7 +56,8 @@
                     <div class="card__header-icon">📡</div>
                     <div>
                         <h2 class="card__title">Escáner de Puertos</h2>
-                        <p class="card__description">Escanea puertos lógicos abiertos de un equipo remoto usando nmap</p>
+                        <p class="card__description">Escanea puertos lógicos abiertos de un equipo remoto usando nmap
+                        </p>
                     </div>
                 </div>
 
@@ -55,7 +65,8 @@
                     <!-- Host -->
                     <div class="form-group">
                         <label class="form-label" for="scan-host">Dirección IP / Hostname</label>
-                        <input type="text" id="scan-host" class="form-input" placeholder="Ej: 192.168.1.1 o scanme.nmap.org" autocomplete="off">
+                        <input type="text" id="scan-host" class="form-input"
+                            placeholder="Ej: 192.168.1.1 o scanme.nmap.org" autocomplete="off">
                     </div>
 
                     <!-- Scan Type -->
@@ -81,7 +92,8 @@
                     <div id="single-port-fields" class="dynamic-fields">
                         <div class="form-group">
                             <label class="form-label" for="single-port">Número de Puerto</label>
-                            <input type="number" id="single-port" class="form-input" placeholder="Ej: 80" min="1" max="65535">
+                            <input type="number" id="single-port" class="form-input" placeholder="Ej: 80" min="1"
+                                max="65535">
                         </div>
                     </div>
 
@@ -90,11 +102,13 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label class="form-label" for="range-start">Puerto Inicio</label>
-                                <input type="number" id="range-start" class="form-input" placeholder="Ej: 1" min="1" max="65535">
+                                <input type="number" id="range-start" class="form-input" placeholder="Ej: 1" min="1"
+                                    max="65535">
                             </div>
                             <div class="form-group">
                                 <label class="form-label" for="range-end">Puerto Fin</label>
-                                <input type="number" id="range-end" class="form-input" placeholder="Ej: 1024" min="1" max="65535">
+                                <input type="number" id="range-end" class="form-input" placeholder="Ej: 1024" min="1"
+                                    max="65535">
                             </div>
                         </div>
                     </div>
@@ -138,7 +152,8 @@
                     <div class="card__header-icon">🔑</div>
                     <div>
                         <h2 class="card__title">Generador de Contraseñas</h2>
-                        <p class="card__description">Genera contraseñas seguras combinando letras, números y caracteres especiales</p>
+                        <p class="card__description">Genera contraseñas seguras combinando letras, números y caracteres
+                            especiales</p>
                     </div>
                 </div>
 
@@ -146,11 +161,13 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label" for="pass-length">Longitud (mín. 8)</label>
-                            <input type="number" id="pass-length" class="form-input" placeholder="Ej: 16" min="8" max="128" value="16">
+                            <input type="number" id="pass-length" class="form-input" placeholder="Ej: 16" min="8"
+                                max="128" value="16">
                         </div>
                         <div class="form-group">
                             <label class="form-label" for="pass-count">Cantidad (máx. 100)</label>
-                            <input type="number" id="pass-count" class="form-input" placeholder="Ej: 5" min="1" max="100" value="5">
+                            <input type="number" id="pass-count" class="form-input" placeholder="Ej: 5" min="1"
+                                max="100" value="5">
                         </div>
                     </div>
 
@@ -176,13 +193,108 @@
             </div>
         </div>
 
+        <!-- ========== SNIFFER PANEL ========== -->
+        <div id="sniffer-panel" class="panel">
+            <div class="card">
+                <div class="card__header">
+                    <div class="card__header-icon">🕵️</div>
+                    <div>
+                        <h2 class="card__title">Sniffer de Red</h2>
+                        <p class="card__description">Captura y analiza el tráfico de red en tiempo real</p>
+                    </div>
+                </div>
+
+                <div class="warning-banner" style="margin-bottom: 1.25rem;">
+                    <span class="warning-banner__icon">ℹ️</span>
+                    <span>Se requieren permisos de administrador (sudo) para capturar tráfico de red. La captura se
+                        puede guardar en un archivo JSON.</span>
+                </div>
+
+                <form id="sniffer-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="sniff-count">Cantidad de Paquetes (máx. 200)</label>
+                            <input type="number" id="sniff-count" class="form-input" placeholder="Ej: 50" min="1"
+                                max="200" value="50">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="sniff-filter">Filtro de Protocolo</label>
+                            <select id="sniff-filter" class="form-input">
+                                <option value="all">🌐 Todos los protocolos</option>
+                                <option value="tcp">📡 Solo TCP</option>
+                                <option value="udp">📨 Solo UDP</option>
+                                <option value="icmp">🏓 Solo ICMP (Ping)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="sniff-interface">Interfaz de Red (opcional)</label>
+                        <input type="text" id="sniff-interface" class="form-input"
+                            placeholder="Ej: eth0, wlan0 (dejar vacío para predeterminada)" autocomplete="off">
+                    </div>
+
+                    <!-- Submit -->
+                    <button type="submit" id="sniff-btn" class="btn btn-sniff">
+                        <span class="spinner" id="sniff-spinner"></span>
+                        <span class="btn-text">INICIAR CAPTURA</span>
+                    </button>
+                </form>
+
+                <!-- Messages -->
+                <div id="sniff-message" class="message"></div>
+
+                <!-- Results -->
+                <div id="sniff-results" class="results">
+                    <div class="results__header">
+                        <span class="results__title">📦 Paquetes Capturados</span>
+                        <span class="results__count" id="sniff-results-info"></span>
+                    </div>
+
+                    <!-- Save button -->
+                    <div class="sniff-actions">
+                        <div class="form-row">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <input type="text" id="sniff-filepath" class="form-input"
+                                    placeholder="Ruta para guardar: /ruta/captura.json">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <button type="button" id="save-capture-btn" class="btn btn-save">
+                                    💾 GUARDAR CAPTURA
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sniff-table-wrapper">
+                        <table class="port-table sniff-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Hora</th>
+                                    <th>Protocolo</th>
+                                    <th>Origen</th>
+                                    <th>Destino</th>
+                                    <th>Servicio</th>
+                                    <th>Tamaño</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sniff-results-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Footer -->
         <footer class="footer">
             <p><span>CyberTool</span> — Hacking Ético | Ciberseguridad 2026</p>
-            <p>Desarrollado con Python + Flask + Nmap</p>
+            <p>Desarrollado con Python + Flask + Nmap + Scapy</p>
         </footer>
     </div>
 
     <script src="/static/script.js"></script>
 </body>
+
 </html>

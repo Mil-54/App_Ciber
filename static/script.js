@@ -362,10 +362,18 @@ document.addEventListener('DOMContentLoaded', () => {
         resultsInfo.textContent = `Filtro: ${data.filter} | Total capturados: ${data.total_captured}`;
         resultsBody.innerHTML = '';
 
+        // Update security stats dashboard
+        if (data.stats) {
+            document.getElementById('stat-insecure').textContent = data.stats.insecure;
+            document.getElementById('stat-secure').textContent = data.stats.secure;
+            document.getElementById('stat-total').textContent = data.stats.total;
+            document.getElementById('stat-plaintext').textContent = data.stats.plaintext_detected;
+        }
+
         if (data.packets.length === 0) {
             resultsBody.innerHTML = `
                 <tr>
-                    <td colspan="7" class="no-results">
+                    <td colspan="8" class="no-results">
                         <span class="no-results__icon">📭</span>
                         No se capturaron paquetes
                     </td>
@@ -374,19 +382,37 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             data.packets.forEach((pkt, index) => {
                 const protocolClass = getProtocolClass(pkt.protocol);
-                const time = pkt.timestamp ? pkt.timestamp.split(' ')[1] : '-';
                 const src = pkt.src_ip ? `${pkt.src_ip}:${pkt.src_port}` : '-';
                 const dst = pkt.dst_ip ? `${pkt.dst_ip}:${pkt.dst_port}` : '-';
 
+                // Security badge
+                const secClass = getSecurityClass(pkt.security);
+                const secLabel = pkt.security === 'insecure' ? '⚠️ NO SEGURO' :
+                    pkt.security === 'secure' ? '🔒 CIFRADO' : '—';
+
+                // Risk badge
+                const riskClass = getRiskClass(pkt.risk);
+
+                // Data preview - highlight plain text
+                let dataCell = '';
+                if (pkt.data_readable && pkt.data) {
+                    dataCell = `<span class="data-plaintext" title="${escapeHtml(pkt.data)}">👁️ ${escapeHtml(pkt.data.substring(0, 40))}${pkt.data.length > 40 ? '...' : ''}</span>`;
+                } else if (pkt.data && pkt.data.includes('cifrado')) {
+                    dataCell = `<span class="data-encrypted">🔒 Cifrado</span>`;
+                } else {
+                    dataCell = `<span class="data-none">—</span>`;
+                }
+
                 resultsBody.innerHTML += `
-                    <tr>
+                    <tr class="row-${pkt.security || 'unknown'}">
                         <td class="port-number">${index + 1}</td>
-                        <td>${time}</td>
                         <td><span class="protocol-badge ${protocolClass}">${pkt.protocol}</span></td>
                         <td>${escapeHtml(src)}</td>
                         <td>${escapeHtml(dst)}</td>
                         <td>${escapeHtml(pkt.service || '-')}</td>
-                        <td>${pkt.size} B</td>
+                        <td><span class="security-badge ${secClass}">${secLabel}</span></td>
+                        <td><span class="risk-badge ${riskClass}">${pkt.risk || '-'}</span></td>
+                        <td>${dataCell}</td>
                     </tr>
                 `;
             });
@@ -402,6 +428,26 @@ document.addEventListener('DOMContentLoaded', () => {
             'ICMP': 'protocol-icmp'
         };
         return map[protocol] || 'protocol-other';
+    }
+
+    function getSecurityClass(security) {
+        const map = {
+            'insecure': 'security-insecure',
+            'secure': 'security-secure',
+            'info': 'security-info'
+        };
+        return map[security] || 'security-unknown';
+    }
+
+    function getRiskClass(risk) {
+        const map = {
+            'CRÍTICO': 'risk-critical',
+            'ALTO': 'risk-high',
+            'MEDIO': 'risk-medium',
+            'BAJO': 'risk-low',
+            'NINGUNO': 'risk-none'
+        };
+        return map[risk] || 'risk-unknown';
     }
 
     // ---- Utility Functions ----

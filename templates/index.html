@@ -200,14 +200,17 @@
                     <div class="card__header-icon">🕵️</div>
                     <div>
                         <h2 class="card__title">Sniffer de Red</h2>
-                        <p class="card__description">Captura y analiza el tráfico de red en tiempo real</p>
+                        <p class="card__description">Intercepta y analiza el tráfico de red — Detecta protocolos seguros
+                            vs inseguros</p>
                     </div>
                 </div>
 
                 <div class="warning-banner" style="margin-bottom: 1.25rem;">
-                    <span class="warning-banner__icon">ℹ️</span>
-                    <span>Se requieren permisos de administrador (sudo) para capturar tráfico de red. La captura se
-                        puede guardar en un archivo JSON.</span>
+                    <span class="warning-banner__icon">🕵️</span>
+                    <span><strong>Sniffing</strong> es una técnica de espionaje cibernético: intercepta datos que
+                        circulan por la red. En puertos <strong>NO seguros</strong> el atacante obtiene <strong>texto
+                            plano</strong>. En protocolos <strong>seguros</strong> la información viaja
+                        <strong>encriptada</strong>.</span>
                 </div>
 
                 <form id="sniffer-form">
@@ -246,6 +249,30 @@
 
                 <!-- Results -->
                 <div id="sniff-results" class="results">
+                    <!-- Security Stats Dashboard -->
+                    <div id="sniff-stats" class="security-stats">
+                        <div class="stat-card stat-insecure">
+                            <span class="stat-icon">⚠️</span>
+                            <span class="stat-value" id="stat-insecure">0</span>
+                            <span class="stat-label">No Seguros<br><small>Texto Plano</small></span>
+                        </div>
+                        <div class="stat-card stat-secure">
+                            <span class="stat-icon">🔒</span>
+                            <span class="stat-value" id="stat-secure">0</span>
+                            <span class="stat-label">Seguros<br><small>Cifrados</small></span>
+                        </div>
+                        <div class="stat-card stat-total">
+                            <span class="stat-icon">📦</span>
+                            <span class="stat-value" id="stat-total">0</span>
+                            <span class="stat-label">Total<br><small>Capturados</small></span>
+                        </div>
+                        <div class="stat-card stat-plaintext">
+                            <span class="stat-icon">👁️</span>
+                            <span class="stat-value" id="stat-plaintext">0</span>
+                            <span class="stat-label">Texto Plano<br><small>Datos Visibles</small></span>
+                        </div>
+                    </div>
+
                     <div class="results__header">
                         <span class="results__title">📦 Paquetes Capturados</span>
                         <span class="results__count" id="sniff-results-info"></span>
@@ -271,12 +298,13 @@
                             <thead>
                                 <tr>
                                     <th>#</th>
-                                    <th>Hora</th>
                                     <th>Protocolo</th>
                                     <th>Origen</th>
                                     <th>Destino</th>
                                     <th>Servicio</th>
-                                    <th>Tamaño</th>
+                                    <th>Seguridad</th>
+                                    <th>Riesgo</th>
+                                    <th>Datos</th>
                                 </tr>
                             </thead>
                             <tbody id="sniff-results-body">

@@ -429,7 +429,7 @@
                 <!-- Results -->
                 <div id="key-results" class="results">
                     <!-- Stats -->
-                    <div class="security-stats" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="security-stats" style="grid-template-columns: repeat(5, 1fr);">
                         <div class="stat-card stat-total">
                             <span class="stat-icon">⌨️</span>
                             <span class="stat-value" id="key-stat-total">0</span>
@@ -449,6 +449,11 @@
                             <span class="stat-icon">⚙️</span>
                             <span class="stat-value" id="key-stat-special">0</span>
                             <span class="stat-label">Especiales<br><small>Ctrl, Alt...</small></span>
+                        </div>
+                        <div class="stat-card" style="background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.2);color:var(--accent-purple);">
+                            <span class="stat-icon">📸</span>
+                            <span class="stat-value" id="key-stat-screenshots">0</span>
+                            <span class="stat-label">Capturas<br><small>Pantalla</small></span>
                         </div>
                     </div>
 
@@ -494,6 +499,15 @@
                             <tbody id="key-results-body">
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- Screenshot Gallery -->
+                    <div id="key-screenshots-section" style="display:none; margin-top:1.25rem;">
+                        <div class="results__header">
+                            <span class="results__title">📸 Capturas de Pantalla</span>
+                            <span class="results__count" id="key-screenshots-info"></span>
+                        </div>
+                        <div id="key-screenshots-gallery" class="screenshots-gallery"></div>
                     </div>
                 </div>
             </div>

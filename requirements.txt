@@ -3,3 +3,5 @@ python-nmap
 scapy
 keyboard
 requests
+Pillow
+mss

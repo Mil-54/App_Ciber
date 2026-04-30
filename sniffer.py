@@ -5,8 +5,10 @@ Captura paquetes de la red utilizando la librería scapy.
 Sniffing es una técnica de espionaje cibernético que consiste en la
 intercepción y registro de datos que circulan por una red digital.
 
-Los administradores de redes utilizan herramientas de sniffing para
-diagnosticar problemas o monitorear el tráfico en la red digital.
+Este módulo soporta dos modos:
+  - LOCAL:  captura tráfico en la interfaz de red de este servidor.
+  - REMOTO: recibe paquetes enviados por remote_agent.py desde
+            otra máquina en el ambiente controlado de laboratorio.
 
 Este módulo demuestra cómo:
 - En puertos lógicos NO seguros, el atacante puede obtener TEXTO PLANO
@@ -65,6 +67,13 @@ class NetworkSniffer:
         self.is_running = False
         self.capture_thread = None
         self.save_path = None
+
+        # ── Modo Remoto ──────────────────────────────────────────────
+        # Buffer thread-safe para paquetes enviados por remote_agent.py
+        self._remote_packets: list = []
+        self._remote_lock = threading.Lock()
+        self._remote_agent_info: dict = {}   # metadata del agente registrado
+        self._remote_complete: bool = False  # True cuando el agente envió 'final'
     
     def _process_packet(self, packet):
         """Procesa cada paquete capturado y extrae información relevante."""
@@ -302,6 +311,72 @@ class NetworkSniffer:
                 'success': False,
                 'error': f'Error al guardar: {str(e)}'
             }
+
+
+    # ── Métodos de Modo Remoto ────────────────────────────────────────────────
+
+    def register_remote_agent(self, agent_info: dict):
+        """
+        Registra un agente remoto (remote_agent.py) que va a enviar paquetes.
+        Limpia cualquier captura remota previa.
+        """
+        with self._remote_lock:
+            self._remote_packets = []
+            self._remote_complete = False
+            self._remote_agent_info = agent_info
+        return {'success': True, 'message': f"Agente {agent_info.get('agent_ip')} registrado en modo sniffer."}
+
+    def receive_remote_packets(self, packets: list, final: bool = False):
+        """
+        Recibe un lote de paquetes desde remote_agent.py y los acumula
+        en el buffer remoto.
+
+        Args:
+            packets: Lista de dicts con la info de cada paquete.
+            final:   True si es el último lote (captura completa).
+        """
+        with self._remote_lock:
+            self._remote_packets.extend(packets)
+            if final:
+                self._remote_complete = True
+        return {'success': True, 'received': len(packets)}
+
+    def get_remote_results(self):
+        """
+        Devuelve los paquetes acumulados hasta el momento.
+        Llamado periódicamente por el frontend (polling).
+        """
+        with self._remote_lock:
+            pkts = list(self._remote_packets)
+            complete = self._remote_complete
+            agent = dict(self._remote_agent_info)
+
+        stats = self._generate_stats_from(pkts)
+        return {
+            'success': True,
+            'packets': pkts,
+            'total_captured': len(pkts),
+            'complete': complete,
+            'agent': agent,
+            'filter': agent.get('filter', 'all'),
+            'stats': stats
+        }
+
+    def _generate_stats_from(self, packets: list):
+        """Genera estadísticas a partir de una lista de paquetes arbitraria."""
+        total = len(packets)
+        insecure = sum(1 for p in packets if p.get('security') == 'insecure')
+        secure = sum(1 for p in packets if p.get('security') == 'secure')
+        plaintext = sum(1 for p in packets if p.get('data_readable'))
+        return {
+            'total': total,
+            'insecure': insecure,
+            'secure': secure,
+            'other': total - insecure - secure,
+            'plaintext_detected': plaintext,
+            'insecure_percent': round((insecure / max(total, 1)) * 100, 1),
+            'secure_percent': round((secure / max(total, 1)) * 100, 1)
+        }
 
 
 # Instancia global del sniffer

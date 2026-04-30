@@ -1202,3 +1202,154 @@ select.form-input option {
     border-radius: 4px;
     border: 1px solid var(--border-color);
 }
+
+/* ──────────────────────────────────────────────────────────
+   REMOTE MODE BOX
+────────────────────────────────────────────────────────── */
+.remote-mode-box {
+    margin-top: 1.25rem;
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: var(--radius-sm);
+    background: rgba(0, 212, 255, 0.03);
+    overflow: hidden;
+}
+
+.remote-mode-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.85rem 1.1rem;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    letter-spacing: 0.5px;
+    user-select: none;
+    transition: background 0.2s ease;
+}
+
+.remote-mode-header:hover {
+    background: rgba(0, 212, 255, 0.05);
+}
+
+.remote-chevron {
+    font-size: 0.7rem;
+    transition: transform 0.3s ease;
+}
+
+.remote-chevron.open {
+    transform: rotate(90deg);
+}
+
+.remote-mode-body {
+    display: none;
+    padding: 1rem 1.1rem 1.1rem;
+    border-top: 1px solid rgba(0, 212, 255, 0.12);
+    animation: fadeIn 0.3s ease;
+}
+
+.remote-mode-body.open {
+    display: block;
+}
+
+.remote-hint {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.9rem;
+    line-height: 1.55;
+}
+
+.remote-hint strong {
+    color: var(--accent-cyan);
+}
+
+/* 3-col grid inside remote mode for sniffer */
+.remote-form-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 0.75rem;
+    margin-bottom: 0.9rem;
+}
+
+/* 2-col grid inside remote mode for keylogger */
+.remote-form-row.two-col {
+    grid-template-columns: 2fr 1fr;
+}
+
+/* Command display box */
+.command-box {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 0.9rem;
+    background: var(--bg-primary);
+    border: 1px solid rgba(0, 212, 255, 0.25);
+    border-radius: var(--radius-sm);
+    font-size: 0.72rem;
+    overflow-x: auto;
+}
+
+.command-box code {
+    flex: 1;
+    color: var(--accent-cyan);
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+    line-height: 1.4;
+}
+
+.copy-cmd-btn {
+    flex-shrink: 0;
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    color: var(--accent-cyan);
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.copy-cmd-btn:hover {
+    background: rgba(0, 212, 255, 0.2);
+}
+
+/* Agent status badge */
+.agent-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 50px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    margin-bottom: 0.75rem;
+}
+
+.agent-badge--connected {
+    color: var(--accent-green);
+    background: rgba(0, 255, 136, 0.08);
+    border: 1px solid rgba(0, 255, 136, 0.25);
+}
+
+.agent-badge--waiting {
+    color: var(--accent-yellow);
+    background: rgba(255, 211, 42, 0.08);
+    border: 1px solid rgba(255, 211, 42, 0.2);
+}
+
+.agent-badge--complete {
+    color: var(--accent-cyan);
+    background: rgba(0, 212, 255, 0.08);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+}
+
+@media (max-width: 640px) {
+    .remote-form-row {
+        grid-template-columns: 1fr;
+    }
+}

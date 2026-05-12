@@ -51,6 +51,10 @@
                 <span class="tab-icon">⌨️</span>
                 Keylogger
             </button>
+            <button class="tab-btn" data-tab="arch-panel">
+                <span class="tab-icon">📂</span>
+                Servidor de Archivos
+            </button>
         </div>
 
         <!-- ========== SCANNER PANEL ========== -->
@@ -255,15 +259,18 @@
                         <span class="remote-chevron" id="sniff-chevron">▶</span>
                     </div>
                     <div class="remote-mode-body" id="sniff-remote-body">
-                        <p class="remote-hint">Ejecuta el siguiente comando en la <strong>máquina víctima</strong> del laboratorio. El servidor recibirá los paquetes en tiempo real.</p>
+                        <p class="remote-hint">Ejecuta el siguiente comando en la <strong>máquina víctima</strong> del
+                            laboratorio. El servidor recibirá los paquetes en tiempo real.</p>
                         <div class="remote-form-row">
                             <div class="form-group">
                                 <label class="form-label" for="sniff-remote-server-ip">IP de este Servidor</label>
-                                <input type="text" id="sniff-remote-server-ip" class="form-input" placeholder="Ej: 192.168.1.100" autocomplete="off">
+                                <input type="text" id="sniff-remote-server-ip" class="form-input"
+                                    placeholder="Ej: 192.168.1.100" autocomplete="off">
                             </div>
                             <div class="form-group">
                                 <label class="form-label" for="sniff-remote-count">Paquetes</label>
-                                <input type="number" id="sniff-remote-count" class="form-input" value="50" min="1" max="500">
+                                <input type="number" id="sniff-remote-count" class="form-input" value="50" min="1"
+                                    max="500">
                             </div>
                             <div class="form-group">
                                 <label class="form-label" for="sniff-remote-filter">Filtro</label>
@@ -353,6 +360,48 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <!-- ══════════════════════════════════════════════════════
+                         ARCHIVOS INTERCEPTADOS — nueva sección
+                         ══════════════════════════════════════════════════════ -->
+                    <div id="intercepted-files-section" class="intercepted-files-section" style="display:none;">
+                        <div class="intercepted-files-header">
+                            <span class="intercepted-files-title">
+                                📂 Archivos Interceptados vía HTTP
+                            </span>
+                            <span class="intercepted-files-count" id="intercepted-files-count"></span>
+                        </div>
+
+                        <div class="warning-banner intercepted-warning">
+                            <span class="warning-banner__icon">🔓</span>
+                            <span>
+                                Estos archivos viajaron en <strong>HTTP plano (sin cifrar)</strong> y fueron
+                                reconstruidos desde los paquetes capturados. Esto demuestra por qué
+                                <strong>HTTPS es obligatorio</strong> para cualquier transferencia de archivos.
+                            </span>
+                        </div>
+
+                        <div class="sniff-table-wrapper">
+                            <table class="port-table intercepted-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Archivo</th>
+                                        <th>Tipo MIME</th>
+                                        <th>Dirección</th>
+                                        <th>Tamaño</th>
+                                        <th>Origen → Destino</th>
+                                        <th>Timestamp</th>
+                                        <th>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="intercepted-files-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <!-- ══════════════════════════════════════════════════════ -->
+
                 </div>
             </div>
         </div>
@@ -401,22 +450,26 @@
                         <span class="remote-chevron" id="key-chevron">▶</span>
                     </div>
                     <div class="remote-mode-body" id="key-remote-body">
-                        <p class="remote-hint">Ejecuta el siguiente comando en la <strong>máquina víctima</strong>. El servidor recibirá las teclas en tiempo real.</p>
+                        <p class="remote-hint">Ejecuta el siguiente comando en la <strong>máquina víctima</strong>. El
+                            servidor recibirá las teclas en tiempo real.</p>
                         <div class="remote-form-row">
                             <div class="form-group">
                                 <label class="form-label" for="key-remote-server-ip">IP de este Servidor</label>
-                                <input type="text" id="key-remote-server-ip" class="form-input" placeholder="Ej: 192.168.1.100" autocomplete="off">
+                                <input type="text" id="key-remote-server-ip" class="form-input"
+                                    placeholder="Ej: 192.168.1.100" autocomplete="off">
                             </div>
                             <div class="form-group">
                                 <label class="form-label" for="key-remote-duration">Duración (seg)</label>
-                                <input type="number" id="key-remote-duration" class="form-input" value="20" min="1" max="60">
+                                <input type="number" id="key-remote-duration" class="form-input" value="20" min="1"
+                                    max="60">
                             </div>
                         </div>
                         <div class="command-box" id="key-command-box">
                             <code id="key-command-text">— ingresa la IP del servidor para generar el comando —</code>
                             <button class="copy-cmd-btn" id="key-copy-cmd" title="Copiar comando">📋</button>
                         </div>
-                        <button type="button" id="key-remote-btn" class="btn btn-keylogger" style="margin-top: 0.75rem;">
+                        <button type="button" id="key-remote-btn" class="btn btn-keylogger"
+                            style="margin-top: 0.75rem;">
                             <span class="spinner" id="key-remote-spinner"></span>
                             <span class="btn-text">⏳ ESPERAR AGENTE REMOTO</span>
                         </button>
@@ -450,7 +503,8 @@
                             <span class="stat-value" id="key-stat-special">0</span>
                             <span class="stat-label">Especiales<br><small>Ctrl, Alt...</small></span>
                         </div>
-                        <div class="stat-card" style="background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.2);color:var(--accent-purple);">
+                        <div class="stat-card"
+                            style="background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.2);color:var(--accent-purple);">
                             <span class="stat-icon">📸</span>
                             <span class="stat-value" id="key-stat-screenshots">0</span>
                             <span class="stat-label">Capturas<br><small>Pantalla</small></span>
@@ -513,6 +567,75 @@
             </div>
         </div>
 
+        <!-- ========== ARCH — SERVIDOR DE ARCHIVOS ========== -->
+        <div id="arch-panel" class="panel">
+            <div class="card">
+                <div class="card__header">
+                    <div class="card__header-icon">📂</div>
+                    <div>
+                        <h2 class="card__title">Servidor de Archivos — Máquina Víctima</h2>
+                        <p class="card__description">Visualiza y descarga los archivos subidos por la máquina atacada vía <code style="color:#00d4ff;font-family:monospace">arch.py</code></p>
+                    </div>
+                </div>
+
+                <div class="warning-banner" style="margin-bottom:1.25rem;">
+                    <span class="warning-banner__icon">🎯</span>
+                    <span>
+                        Los archivos aquí listados fueron subidos por la <strong>máquina víctima</strong>
+                        que ejecuta <strong>arch.py</strong>. Puedes descargarlos directamente desde el servidor atacante.
+                        Carpeta en el servidor: <code style="color:#00d4ff;font-family:monospace">uploads/</code>
+                    </span>
+                </div>
+
+                <!-- Controles -->
+                <div class="form-row" style="margin-bottom:1rem;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <button type="button" id="arch-refresh-btn" class="btn btn-sniff" style="padding:0.55rem 1.2rem;">
+                            <span class="spinner" id="arch-refresh-spinner"></span>
+                            <span class="btn-text">🔄 ACTUALIZAR LISTA</span>
+                        </button>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0; flex:1;">
+                        <input type="text" id="arch-search" class="form-input" placeholder="🔍 Filtrar archivos...">
+                    </div>
+                </div>
+
+                <!-- Messages -->
+                <div id="arch-message" class="message"></div>
+
+                <!-- File Grid -->
+                <div id="arch-results" class="results">
+                    <!-- Stats -->
+                    <div class="security-stats" style="grid-template-columns:repeat(3,1fr);" id="arch-stats-bar">
+                        <div class="stat-card stat-total">
+                            <span class="stat-icon">📁</span>
+                            <span class="stat-value" id="arch-stat-total">—</span>
+                            <span class="stat-label">Archivos<br><small>Subidos</small></span>
+                        </div>
+                        <div class="stat-card stat-secure">
+                            <span class="stat-icon">📦</span>
+                            <span class="stat-value" id="arch-stat-size">—</span>
+                            <span class="stat-label">Tamaño<br><small>Total</small></span>
+                        </div>
+                        <div class="stat-card stat-plaintext">
+                            <span class="stat-icon">🕐</span>
+                            <span class="stat-value" id="arch-stat-last" style="font-size:0.7rem;">—</span>
+                            <span class="stat-label">Último<br><small>Archivo</small></span>
+                        </div>
+                    </div>
+
+                    <div class="results__header" style="margin-top:1rem;">
+                        <span class="results__title">📋 Archivos recibidos</span>
+                        <span class="results__count" id="arch-results-info"></span>
+                    </div>
+
+                    <!-- File list -->
+                    <div id="arch-file-list" class="arch-file-list"></div>
+                </div>
+            </div>
+        </div>
+        <!-- ========================================== -->
+
         <!-- Footer -->
         <footer class="footer">
             <p><span>CyberTool</span> — Hacking Ético | Ciberseguridad 2026</p>
@@ -520,7 +643,266 @@
         </footer>
     </div>
 
+    <!-- ══════════════════════════════════════════════════════════════════════
+         ESTILOS para la sección de archivos interceptados
+         (se inyectan aquí para no depender de editar style.css)
+         ══════════════════════════════════════════════════════════════════════ -->
+    <style>
+        /* ── Sección contenedor ── */
+        .intercepted-files-section {
+            margin-top: 1.75rem;
+            border: 1px solid rgba(233, 69, 96, 0.45);
+            border-radius: 10px;
+            overflow: hidden;
+            background: rgba(233, 69, 96, 0.04);
+        }
+
+        .intercepted-files-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1rem;
+            background: rgba(233, 69, 96, 0.12);
+            border-bottom: 1px solid rgba(233, 69, 96, 0.3);
+        }
+
+        .intercepted-files-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #e94560;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .intercepted-files-count {
+            font-size: 0.8rem;
+            color: #f0a500;
+            background: rgba(240, 165, 0, 0.12);
+            padding: 2px 10px;
+            border-radius: 20px;
+            border: 1px solid rgba(240, 165, 0, 0.3);
+        }
+
+        .intercepted-warning {
+            margin: 0.75rem 1rem;
+            border-radius: 6px;
+        }
+
+        /* ── Tabla de archivos interceptados ── */
+        .intercepted-table {
+            margin: 0 0 0.75rem 0;
+        }
+
+        .intercepted-table td {
+            vertical-align: middle;
+        }
+
+        .intercepted-table code {
+            font-size: 0.82em;
+            background: rgba(0, 212, 255, 0.08);
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #00d4ff;
+            word-break: break-all;
+        }
+
+        /* ── Dirección badge ── */
+        .direction-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.75rem;
+            padding: 3px 8px;
+            border-radius: 20px;
+            white-space: nowrap;
+            font-weight: 600;
+        }
+
+        .direction-badge.upload {
+            background: rgba(240, 165, 0, 0.15);
+            border: 1px solid rgba(240, 165, 0, 0.4);
+            color: #f0a500;
+        }
+
+        .direction-badge.download {
+            background: rgba(0, 212, 255, 0.12);
+            border: 1px solid rgba(0, 212, 255, 0.35);
+            color: #00d4ff;
+        }
+
+        /* ── Botón descarga ── */
+        .btn-intercept-download {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: linear-gradient(135deg, #e94560, #c73652);
+            color: #fff;
+            padding: 5px 12px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            border: none;
+            cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s;
+            white-space: nowrap;
+        }
+
+        .btn-intercept-download:hover {
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
+
+        .btn-intercept-download:active {
+            transform: translateY(0);
+        }
+
+        /* ── Pulse animation en el header cuando hay archivos ── */
+        @keyframes pulse-red {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(233, 69, 96, 0.4);
+            }
+
+            50% {
+                box-shadow: 0 0 0 6px rgba(233, 69, 96, 0);
+            }
+        }
+
+        .intercepted-files-section.has-files {
+            animation: pulse-red 2s ease-in-out 3;
+        }
+    </style>
+
     <script src="/static/script.js"></script>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         JS para renderizar archivos interceptados.
+         Se ejecuta después de script.js para que pueda sobreescribir/extender.
+         ══════════════════════════════════════════════════════════════════════ -->
+    <script>
+        /**
+         * Escapa caracteres HTML para evitar XSS en nombres de archivo.
+         */
+        function escapeHtml(str) {
+            return String(str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        /**
+         * Formatea bytes a KB / MB legibles.
+         */
+        function formatSize(bytes) {
+            if (!bytes) return '—';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        /**
+         * Renderiza la tabla de archivos interceptados.
+         * @param {Array} files  Lista de objetos devueltos por /sniff → intercepted_files
+         */
+        function renderInterceptedFiles(files) {
+            const section = document.getElementById('intercepted-files-section');
+            const tbody = document.getElementById('intercepted-files-body');
+            const counter = document.getElementById('intercepted-files-count');
+
+            if (!files || files.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = 'block';
+            section.classList.add('has-files');
+            counter.textContent = files.length + ' archivo' + (files.length !== 1 ? 's' : '') + ' detectado' + (files.length !== 1 ? 's' : '');
+
+            tbody.innerHTML = '';
+
+            files.forEach((f, idx) => {
+                const isUpload = f.direction === 'upload';
+                const dirLabel = isUpload
+                    ? '<span class="direction-badge upload">⬆️ Upload</span>'
+                    : '<span class="direction-badge download">⬇️ Download</span>';
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${idx + 1}</td>
+                    <td><code>${escapeHtml(f.filename)}</code></td>
+                    <td><small style="color:#a0a0b0;">${escapeHtml(f.content_type || '—')}</small></td>
+                    <td>${dirLabel}</td>
+                    <td>${formatSize(f.size)}</td>
+                    <td>
+                        <small style="color:#7a7a9a;">
+                            ${escapeHtml(f.src_ip || '?')}
+                            <span style="color:#e94560;">→</span>
+                            ${escapeHtml(f.dst_ip || '?')}
+                        </small>
+                    </td>
+                    <td><small style="color:#7a7a9a;">${escapeHtml(f.timestamp || '—')}</small></td>
+                    <td>
+                        <a href="/download-intercepted/${idx}"
+                           class="btn-intercept-download"
+                           download="${escapeHtml(f.filename)}">
+                            💾 Descargar
+                        </a>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        /*
+         * Parche sobre el evento submit del formulario del sniffer.
+         * Espera a que script.js procese la respuesta y luego renderiza archivos.
+         *
+         * ESTRATEGIA: interceptamos el fetch original sobreescribiendo
+         * el listener del form DESPUÉS de que script.js lo haya registrado,
+         * usando un MutationObserver sobre #sniff-results para detectar
+         * cuándo se actualiza y disparar la renderización con los datos
+         * que guardamos en window._lastSniffData.
+         *
+         * Alternativa más simple (si tienes acceso a script.js):
+         * llama a renderInterceptedFiles(data.intercepted_files || [])
+         * dentro del .then() de tu fetch('/sniff', ...).
+         */
+
+        // Guardamos referencia al fetch original
+        const _originalFetch = window.fetch.bind(window);
+
+        window.fetch = async function (url, options) {
+            const response = await _originalFetch(url, options);
+
+            // Solo interceptamos /sniff
+            if (typeof url === 'string' && url.includes('/sniff') && !url.includes('save')) {
+                // Clonamos para no consumir el body
+                const clone = response.clone();
+                clone.json().then(data => {
+                    if (data && data.success) {
+                        renderInterceptedFiles(data.intercepted_files || []);
+                    }
+                }).catch(() => { });
+            }
+
+            // También para polling de agente remoto /agent/results/sniffer
+            if (typeof url === 'string' && url.includes('/agent/results/sniffer')) {
+                const clone = response.clone();
+                clone.json().then(data => {
+                    if (data && data.success && data.intercepted_files && data.intercepted_files.length > 0) {
+                        renderInterceptedFiles(data.intercepted_files);
+                    }
+                }).catch(() => { });
+            }
+
+            return response;
+        };
+    </script>
+
 </body>
 
 </html>

